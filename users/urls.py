@@ -9,7 +9,6 @@ from .views import (
     ReissueView,
     PasswordChangeView,
     AccountDeleteView,
-    AuthTestView,
 )
 
 urlpatterns = [
