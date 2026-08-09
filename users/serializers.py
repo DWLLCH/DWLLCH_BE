@@ -145,3 +145,7 @@ class EmailCheckSerializer(serializers.Serializer):     # 이메일 형식 확�
 
 class UsernameCheckSerializer(serializers.Serializer):  # 유저명 형식 확인
     username = serializers.CharField(max_length=30)
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)

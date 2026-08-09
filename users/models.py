@@ -54,6 +54,8 @@ class User(AbstractUser):
         choices=EducationStatus.choices,
     )
 
+    USERNAME_FIELD = "email"
+    
     REQUIRED_FIELDS = [
         # "username", 
         "birthDate",

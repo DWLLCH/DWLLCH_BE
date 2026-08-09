@@ -1,9 +1,11 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
 
 from .models import User
-from .serializers import SignupSerializer, EmailCheckSerializer, UsernameCheckSerializer
+from .serializers import SignupSerializer, EmailCheckSerializer, UsernameCheckSerializer, LoginSerializer
 
 class SignupView(APIView):
     authentication_classes = []
@@ -118,6 +120,50 @@ class UsernameCheckView(APIView):
                 "message": "사용 가능한 유저명입니다.",
                 "data": {
                     "available": True,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+class LoginView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        password = serializer.validated_data["password"]
+
+        user = authenticate(
+            request=request,
+            username=email,
+            password=password,
+        )
+
+        if user is None:
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_401_UNAUTHORIZED",
+                    "message": "이메일 또는 비밀번호가 일치하지 않습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response(
+            {
+                "success": True,
+                "code": "SUCCESS",
+                "message": "로그인이 완료되었습니다.",
+                "data": {
+                    "accessToken": str(refresh.access_token),
+                    "refreshToken": str(refresh),
+                    "userId": user.id,
                 },
             },
             status=status.HTTP_200_OK,
