@@ -13,7 +13,7 @@ from .views import (
 )
 
 urlpatterns = [
-    path("auth/signup", SignupView.as_view()),
+    path("auth/signup", SignupView.as_view(), name="signup"),
     path("auth/signup/email/check", EmailCheckView.as_view(), name="email-check",),
     path("auth/signup/username/check", UsernameCheckView.as_view(), name="username-check",),
     path("auth/login", LoginView.as_view(), name="login"),
