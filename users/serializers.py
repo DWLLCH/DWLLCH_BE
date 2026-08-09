@@ -49,42 +49,44 @@ class SignupSerializer(serializers.ModelSerializer):
             "educationStatus",
         ]
 
-    def validate_email(self, value):
+    def validate_email(self, value):    # 이메일 중복 확인
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
                 "이미 가입된 이메일입니다."
             )
         return value
 
-    def validate_username(self, value):
+        
+    def validate_username(self, value):     # 유저명 중복 확인
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError(
                 "이미 사용 중인 아이디입니다."
             )
         return value
 
-    def validate_password(self, value):
-        if len(value) < 8:
-            raise serializers.ValidationError(
-                "비밀번호는 8자 이상이어야 합니다."
-            )
+# 추가 기능: 비밀번호 유효성 검사
+    # def validate_password(self, value):
+    #     if len(value) < 8:
+    #         raise serializers.ValidationError(
+    #             "비밀번호는 8자 이상이어야 합니다."
+    #         )
 
-        if not any(char.isupper() for char in value):
-            raise serializers.ValidationError(
-                "비밀번호에 대문자가 포함되어야 합니다."
-            )
+    #     if not any(char.isupper() for char in value):
+    #         raise serializers.ValidationError(
+    #             "비밀번호에 대문자가 포함되어야 합니다."
+    #         )
 
-        if not any(char.isdigit() for char in value):
-            raise serializers.ValidationError(
-                "비밀번호에 숫자가 포함되어야 합니다."
-            )
+    #     if not any(char.isdigit() for char in value):
+    #         raise serializers.ValidationError(
+    #             "비밀번호에 숫자가 포함되어야 합니다."
+    #         )
 
-        if not any(not char.isalnum() for char in value):
-            raise serializers.ValidationError(
-                "비밀번호에 특수문자가 포함되어야 합니다."
-            )
+    #     if not any(not char.isalnum() for char in value):
+    #         raise serializers.ValidationError(
+    #             "비밀번호에 특수문자가 포함되어야 합니다."
+    #         )
 
-        return value
+    #     return value
 
     def validate(self, attrs):
         if attrs["password"] != attrs["passwordConfirm"]:
@@ -137,3 +139,6 @@ class SignupSerializer(serializers.ModelSerializer):
         user.save()
 
         return user
+
+class EmailCheckSerializer(serializers.Serializer):     # 이메일 형식 확인
+    email = serializers.EmailField()
