@@ -13,9 +13,7 @@ class SignupSerializer(serializers.ModelSerializer):
         write_only=True,
     )
 
-    birthDate = serializers.DateField(
-        input_formats=["%Y%m%d"],
-    )
+    birthDate = serializers.DateField()
     protectionEndDate = serializers.DateField()
 
     region = serializers.DictField()
