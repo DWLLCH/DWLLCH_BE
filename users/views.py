@@ -381,3 +381,14 @@ class AccountDeleteView(APIView):
         return Response(
             status=status.HTTP_204_NO_CONTENT
         )
+
+# 인증 테스트용
+class AuthTestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({
+            "message": "인증에 성공했습니다.",
+            "userId": request.user.id,
+            "email": request.user.email,
+        })
