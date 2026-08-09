@@ -152,3 +152,27 @@ class LoginSerializer(serializers.Serializer):
 
 class ReissueSerializer(serializers.Serializer):
     refreshToken = serializers.CharField()
+
+class PasswordChangeSerializer(serializers.Serializer):
+    currentPassword = serializers.CharField(write_only=True)
+    newPassword = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["currentPassword"] == attrs["newPassword"]:
+            raise serializers.ValidationError(
+                {
+                    "code": "COMMON_409_CONFLICT",
+                    "message": "현재 비밀번호와 새 비밀번호는 같을 수 없습니다.",
+                }
+            )
+
+    # 추가 기능: 비밀번호 유효성 검사
+        # if len(attrs["newPassword"]) < 8:
+        #     raise serializers.ValidationError(
+        #         {
+        #             "code": "AUTH_400_WEAK_PASSWORD",
+        #             "message": "비밀번호는 8자 이상이어야 합니다.",
+        #         }
+        #     )
+
+        return attrs

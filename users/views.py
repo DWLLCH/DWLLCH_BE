@@ -14,6 +14,7 @@ from .serializers import (
     UsernameCheckSerializer,
     LoginSerializer,
     ReissueSerializer,
+    PasswordChangeSerializer,
 )
 
 class SignupView(APIView):
@@ -283,4 +284,58 @@ class LogoutView(APIView):
 
         return Response(
             status=status.HTTP_204_NO_CONTENT
+        )
+
+class PasswordChangeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = PasswordChangeSerializer(
+            data=request.data
+        )
+
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": "COMMON_400_INVALID_INPUT",
+                    "message": "잘못된 요청입니다.",
+                    "data": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_password = serializer.validated_data["currentPassword"]
+        new_password = serializer.validated_data["newPassword"]
+
+        user = request.user
+
+        if not user.check_password(current_password):
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_400_CURRENT_PASSWORD_MISMATCH",
+                    "message": "현재 비밀번호가 일치하지 않습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        RefreshTokenModel.objects.filter(user=user).delete()
+
+        return Response(
+            {
+                "success": True,
+                "code": "SUCCESS",
+                "message": "비밀번호가 변경되었습니다.",
+                "data": {
+                    "changed": True,
+                    "changedAt": timezone.now(),
+                    "otherSessionsRevoked": True,
+                },
+            },
+            status=status.HTTP_200_OK,
         )
