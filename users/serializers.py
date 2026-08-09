@@ -176,3 +176,7 @@ class PasswordChangeSerializer(serializers.Serializer):
         #     )
 
         return attrs
+
+class AccountDeleteSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+    reason = serializers.CharField(required=False, allow_blank=True)

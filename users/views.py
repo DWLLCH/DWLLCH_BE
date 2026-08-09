@@ -15,6 +15,7 @@ from .serializers import (
     LoginSerializer,
     ReissueSerializer,
     PasswordChangeSerializer,
+    AccountDeleteSerializer,
 )
 
 class SignupView(APIView):
@@ -338,4 +339,45 @@ class PasswordChangeView(APIView):
                 },
             },
             status=status.HTTP_200_OK,
+        )
+
+class AccountDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        serializer = AccountDeleteSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": "COMMON_400_INVALID_INPUT",
+                    "message": "잘못된 요청입니다.",
+                    "data": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        password = serializer.validated_data["password"]
+
+        if not user.check_password(password):
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_400_CURRENT_PASSWORD_MISMATCH",
+                    "message": "비밀번호가 일치하지 않습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        RefreshTokenModel.objects.filter(
+            user=user
+        ).delete()
+
+        user.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
         )
