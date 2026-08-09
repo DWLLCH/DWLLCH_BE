@@ -6,12 +6,12 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     # username = models.CharField(max_length=30, unique=True) abstractuser에서 이미 username 필드가 존재함
 
-    birth_date = models.DateField()
-    protection_end_date = models.DateField()
+    birthDate = models.DateField()
+    protectionEndDate = models.DateField()
 
     sido = models.CharField(max_length=50)
     sigungu = models.CharField(max_length=50)
-    detail_address = models.CharField(max_length=255, blank=True, null=True)
+    detailAddress = models.CharField(max_length=255, blank=True, null=True)
 
     class HousingType(models.TextChoices):
         MONTHLY_RENT = "MONTHLY_RENT", "월세"
@@ -37,33 +37,33 @@ class User(AbstractUser):
         GRADUATED = "GRADUATED", "졸업"
         HIGH_SCHOOL_OR_BELOW = "HIGH_SCHOOL_OR_BELOW", "고등학교 이하"
 
-    housing_type = models.CharField(
+    housingType = models.CharField(
         max_length=20,
         choices=HousingType.choices,
     )
-    income_type = models.CharField(
+    incomeType = models.CharField(
         max_length=20,
         choices=IncomeType.choices,
     )
-    employment_type = models.CharField(
+    employmentType = models.CharField(
         max_length=20,
         choices=EmploymentType.choices,
     )
-    education_status = models.CharField(
+    educationStatus = models.CharField(
         max_length=30,
         choices=EducationStatus.choices,
     )
 
     REQUIRED_FIELDS = [
         # "username", 
-        "birth_date",
-        "protection_end_date",
+        "birthDate",
+        "protectionEndDate",
         "sido",
         "sigungu",
-        "housing_type",
-        "income_type",
-        "employment_type",
-        "education_status",
+        "housingType",
+        "incomeType",
+        "employmentType",
+        "educationStatus",
     ]
 
     def __str__(self):
