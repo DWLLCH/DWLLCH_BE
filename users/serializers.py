@@ -140,7 +140,10 @@ class ReissueSerializer(serializers.Serializer):
 
 class PasswordChangeSerializer(serializers.Serializer):
     currentPassword = serializers.CharField(write_only=True)
-    newPassword = serializers.CharField(write_only=True)
+    newPassword = serializers.CharField(
+        write_only=True,
+        validators=[validate_password],
+    )
 
     def validate(self, attrs):
         if attrs["currentPassword"] == attrs["newPassword"]:

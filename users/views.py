@@ -382,13 +382,5 @@ class AccountDeleteView(APIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
-# 인증 테스트용
-class AuthTestView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        return Response({
-            "message": "인증에 성공했습니다.",
-            "userId": request.user.id,
-            "email": request.user.email,
-        })
+# 인증 테스트용 view 삭제
+# 인증이 필요한 실제 API가 생기면 해당 API에서 permission_classes = [IsAuthenticated] 테스트 할 것
