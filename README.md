@@ -1,9 +1,13 @@
 # DWLLCH_BE
 
 ## 기술 스택
-- Python
+- Python 3.10.8
 - Django
 - Django REST Framework (DRF)
+- django-cors-headers
+- python-dotenv
+
+각 패키지 버전은 `requirements.txt` 기준으로 설치
 
 ## 시작하기
 
@@ -26,6 +30,7 @@ pip install -r requirements.txt
 
 ### 4. 환경변수 설정
 필요한 환경변수는 `.env` 파일에 작성
+`.gitignore`에 `.env`가 등록되어 있으므로 로컬 전용 파일로 사용할 것
 
 예시:
 ```
