@@ -4,14 +4,17 @@ from django.db import models
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
-    # username = models.CharField(max_length=30, unique=True) abstractuser에서 이미 username 필드가 존재함
 
-    birthDate = models.DateField()
-    protectionEndDate = models.DateField()
+    birth_date = models.DateField()
+    protection_end_date = models.DateField()
 
     sido = models.CharField(max_length=50)
     sigungu = models.CharField(max_length=50)
-    detailAddress = models.CharField(max_length=255, blank=True, null=True)
+    detail_address = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
 
     class HousingType(models.TextChoices):
         MONTHLY_RENT = "MONTHLY_RENT", "월세"
@@ -37,19 +40,19 @@ class User(AbstractUser):
         GRADUATED = "GRADUATED", "졸업"
         HIGH_SCHOOL_OR_BELOW = "HIGH_SCHOOL_OR_BELOW", "고등학교 이하"
 
-    housingType = models.CharField(
+    housing_type = models.CharField(
         max_length=20,
         choices=HousingType.choices,
     )
-    incomeType = models.CharField(
+    income_type = models.CharField(
         max_length=20,
         choices=IncomeType.choices,
     )
-    employmentType = models.CharField(
+    employment_type = models.CharField(
         max_length=20,
         choices=EmploymentType.choices,
     )
-    educationStatus = models.CharField(
+    education_status = models.CharField(
         max_length=30,
         choices=EducationStatus.choices,
     )
@@ -57,19 +60,19 @@ class User(AbstractUser):
     USERNAME_FIELD = "email"
 
     REQUIRED_FIELDS = [
-        # "username", 
-        "birthDate",
-        "protectionEndDate",
+        "birth_date",
+        "protection_end_date",
         "sido",
         "sigungu",
-        "housingType",
-        "incomeType",
-        "employmentType",
-        "educationStatus",
+        "housing_type",
+        "income_type",
+        "employment_type",
+        "education_status",
     ]
 
     def __str__(self):
         return self.email
+
 
 class RefreshToken(models.Model):
     user = models.OneToOneField(

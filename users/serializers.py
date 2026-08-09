@@ -1,18 +1,26 @@
 from datetime import date
-from django.contrib.auth.password_validation import validate_password
 
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+
 from .models import User
+
 
 class RegionSerializer(serializers.Serializer):
     sido = serializers.CharField(max_length=50)
     sigungu = serializers.CharField(max_length=50)
-    detailAddress = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    detailAddress = serializers.CharField(
+        source="detail_address",
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+
 
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
-        validators=[validate_password],     # Django의 내장 비밀번호 유효성 검사기를 사용하여 비밀번호 유효성 검사
+        validators=[validate_password],
     )
     passwordConfirm = serializers.CharField(
         write_only=True,
@@ -20,19 +28,27 @@ class SignupSerializer(serializers.ModelSerializer):
 
     region = RegionSerializer()
 
-    birthDate = serializers.DateField()
-    protectionEndDate = serializers.DateField()
+    birthDate = serializers.DateField(
+        source="birth_date",
+    )
+    protectionEndDate = serializers.DateField(
+        source="protection_end_date",
+    )
 
     housingType = serializers.ChoiceField(
+        source="housing_type",
         choices=User.HousingType.choices,
     )
     incomeType = serializers.ChoiceField(
+        source="income_type",
         choices=User.IncomeType.choices,
     )
     employmentType = serializers.ChoiceField(
+        source="employment_type",
         choices=User.EmploymentType.choices,
     )
     educationStatus = serializers.ChoiceField(
+        source="education_status",
         choices=User.EducationStatus.choices,
     )
 
@@ -52,15 +68,14 @@ class SignupSerializer(serializers.ModelSerializer):
             "educationStatus",
         ]
 
-    def validate_email(self, value):    # 이메일 중복 확인
+    def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
                 "이미 가입된 이메일입니다."
             )
         return value
 
-        
-    def validate_username(self, value):     # 유저명 중복 확인
+    def validate_username(self, value):
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError(
                 "이미 사용 중인 아이디입니다."
@@ -73,7 +88,7 @@ class SignupSerializer(serializers.ModelSerializer):
                 "passwordConfirm": "비밀번호가 일치하지 않습니다."
             })
 
-        if attrs["birthDate"] > date.today():
+        if attrs["birth_date"] > date.today():
             raise serializers.ValidationError({
                 "birthDate": "생년월일은 미래 날짜일 수 없습니다."
             })
@@ -84,22 +99,20 @@ class SignupSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password")
         validated_data.pop("passwordConfirm")
 
-        birth_date = validated_data.pop("birthDate")
-        protection_end_date = validated_data.pop("protectionEndDate")
         region = validated_data.pop("region")
 
         user = User(
             email=validated_data["email"],
             username=validated_data["username"],
-            birth_date=birth_date,
-            protection_end_date=protection_end_date,
+            birth_date=validated_data["birth_date"],
+            protection_end_date=validated_data["protection_end_date"],
             sido=region["sido"],
             sigungu=region["sigungu"],
-            detail_address=region.get("detailAddress"),
-            housing_type=validated_data["housingType"],
-            income_type=validated_data["incomeType"],
-            employment_type=validated_data["employmentType"],
-            education_status=validated_data["educationStatus"],
+            detail_address=region.get("detail_address"),
+            housing_type=validated_data["housing_type"],
+            income_type=validated_data["income_type"],
+            employment_type=validated_data["employment_type"],
+            education_status=validated_data["education_status"],
         )
 
         user.set_password(password)
@@ -107,18 +120,23 @@ class SignupSerializer(serializers.ModelSerializer):
 
         return user
 
-class EmailCheckSerializer(serializers.Serializer):     # 이메일 형식 확인
+
+class EmailCheckSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-class UsernameCheckSerializer(serializers.Serializer):  # 유저명 형식 확인
+
+class UsernameCheckSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=30)
+
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
+
 class ReissueSerializer(serializers.Serializer):
     refreshToken = serializers.CharField()
+
 
 class PasswordChangeSerializer(serializers.Serializer):
     currentPassword = serializers.CharField(write_only=True)
@@ -126,24 +144,17 @@ class PasswordChangeSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs["currentPassword"] == attrs["newPassword"]:
-            raise serializers.ValidationError(
-                {
-                    "code": "COMMON_409_CONFLICT",
-                    "message": "현재 비밀번호와 새 비밀번호는 같을 수 없습니다.",
-                }
-            )
-
-    # 추가 기능: 비밀번호 유효성 검사
-        # if len(attrs["newPassword"]) < 8:
-        #     raise serializers.ValidationError(
-        #         {
-        #             "code": "AUTH_400_WEAK_PASSWORD",
-        #             "message": "비밀번호는 8자 이상이어야 합니다.",
-        #         }
-        #     )
+            raise serializers.ValidationError({
+                "code": "COMMON_409_CONFLICT",
+                "message": "현재 비밀번호와 새 비밀번호는 같을 수 없습니다.",
+            })
 
         return attrs
 
+
 class AccountDeleteSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
-    reason = serializers.CharField(required=False, allow_blank=True)
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )

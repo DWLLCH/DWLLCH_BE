@@ -31,14 +31,15 @@ class AuthAPITestCase(APITestCase):
             "email": "test@example.com",
             "username": "testuser",
             "password": "password123!",
-            "birthDate": date(2000, 1, 1),
-            "protectionEndDate": date(2028, 12, 31),
+            "birth_date": date(2000, 1, 1),
+            "protection_end_date": date(2028, 12, 31),
             "sido": "서울특별시",
             "sigungu": "동대문구",
-            "housingType": User.HousingType.MONTHLY_RENT,
-            "incomeType": User.IncomeType.EARNED,
-            "employmentType": User.EmploymentType.PART_TIME,
-            "educationStatus": User.EducationStatus.ENROLLED,
+            "detail_address": None,
+            "housing_type": User.HousingType.MONTHLY_RENT,
+            "income_type": User.IncomeType.EARNED,
+            "employment_type": User.EmploymentType.PART_TIME,
+            "education_status": User.EducationStatus.ENROLLED,
         }
 
         defaults.update(kwargs)
