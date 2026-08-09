@@ -1,7 +1,7 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError, api_settings
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate
 from django.utils import timezone
@@ -172,7 +172,7 @@ class LoginView(APIView):
             user=user,
             defaults={
                 "token": refresh_token,
-                "expires_at": timezone.now() + timedelta(days=14),
+                "expires_at": timezone.now() + api_settings.REFRESH_TOKEN_LIFETIME,
             },
         )
         
