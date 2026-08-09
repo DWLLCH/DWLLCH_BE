@@ -2,6 +2,7 @@ from datetime import date
 
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import AccessToken
 
 from users.models import User
 
@@ -139,7 +140,7 @@ class AuthAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_reissue_success(self): # Refresh Token으로 Access Token 재발급 성공
-        access_token, refresh_token = self.get_tokens()
+        _, refresh_token = self.get_tokens()
 
         response = self.client.post(
             "/api/v1/auth/reissue",
@@ -152,6 +153,15 @@ class AuthAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["success"])
         self.assertIn("accessToken", response.data["data"])
+
+        new_access_token = response.data["data"]["accessToken"]
+
+        # 재발급된 Access Token이 실제로 유효한 JWT인지 확인
+        token = AccessToken(new_access_token)
+        self.assertEqual(
+            str(token["user_id"]),
+            str(User.objects.get(email="test@example.com").id),
+        )
 
     def test_reissue_invalid_refresh_token(self): # 유효하지 않은 Refresh Token으로 재발급 실패
         self.create_test_user()
@@ -243,6 +253,20 @@ class AuthAPITestCase(APITestCase):
         user = User.objects.get(email="test@example.com")
         self.assertTrue(
             user.check_password("NewPassword123!")
+        )
+
+        # 비밀번호 변경 후 기존 Refresh Token이 폐기되었는지 확인
+        response = self.client.post(
+            "/api/v1/auth/reissue",
+            {
+                "refreshToken": refresh_token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
         )
 
     def test_account_delete_success(self):
