@@ -149,3 +149,6 @@ class UsernameCheckSerializer(serializers.Serializer):  # 유저명 형식 확�
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+class ReissueSerializer(serializers.Serializer):
+    refreshToken = serializers.CharField()

@@ -1,11 +1,19 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.contrib.auth import authenticate
+from django.utils import timezone
+from datetime import timedelta
 
-from .models import User
-from .serializers import SignupSerializer, EmailCheckSerializer, UsernameCheckSerializer, LoginSerializer
+from .models import User, RefreshToken as RefreshTokenModel
+from .serializers import (
+    SignupSerializer,
+    EmailCheckSerializer,
+    UsernameCheckSerializer,
+    LoginSerializer,
+    ReissueSerializer,
+)
 
 class SignupView(APIView):
     authentication_classes = []
@@ -154,16 +162,111 @@ class LoginView(APIView):
             )
 
         refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
 
+        RefreshTokenModel.objects.update_or_create(     # DB에 refresh token 저장
+            user=user,
+            defaults={
+                "token": refresh_token,
+                "expires_at": timezone.now() + timedelta(days=14),
+            },
+        )
+        
         return Response(
             {
                 "success": True,
                 "code": "SUCCESS",
                 "message": "로그인이 완료되었습니다.",
                 "data": {
-                    "accessToken": str(refresh.access_token),
-                    "refreshToken": str(refresh),
+                    "accessToken": access_token,
+                    "refreshToken": refresh_token,
                     "userId": user.id,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+    
+class ReissueView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        serializer = ReissueSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        refresh_token = serializer.validated_data["refreshToken"]
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": "COMMON_400_INVALID_INPUT",
+                    "message": "Refresh Token이 필요합니다.",
+                    "data": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            token = RefreshToken(refresh_token)
+            user_id = token["user_id"]
+        except TokenError:
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_401_UNAUTHORIZED",
+                    "message": "유효하지 않은 Refresh Token입니다.",
+                    "data": None,
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        try:
+            stored_token = RefreshTokenModel.objects.get(
+                user_id=user_id
+            )
+        except RefreshTokenModel.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_401_UNAUTHORIZED",
+                    "message": "로그인 정보가 존재하지 않습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if stored_token.token != refresh_token:
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_401_UNAUTHORIZED",
+                    "message": "유효하지 않은 Refresh Token입니다.",
+                    "data": None,
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if stored_token.expires_at < timezone.now():
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_401_EXPIRED_TOKEN",
+                    "message": "Refresh Token이 만료되었습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        new_access_token = str(token.access_token)
+
+        return Response(
+            {
+                "success": True,
+                "code": "SUCCESS",
+                "message": "Access Token이 재발급되었습니다.",
+                "data": {
+                    "accessToken": new_access_token,
                 },
             },
             status=status.HTTP_200_OK,

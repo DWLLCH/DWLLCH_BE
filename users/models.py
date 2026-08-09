@@ -55,7 +55,7 @@ class User(AbstractUser):
     )
 
     USERNAME_FIELD = "email"
-    
+
     REQUIRED_FIELDS = [
         # "username", 
         "birthDate",
@@ -70,3 +70,16 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+class RefreshToken(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="refresh_token",
+    )
+    token = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.user.email} refresh token"
