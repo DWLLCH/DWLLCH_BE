@@ -48,14 +48,16 @@ INSTALLED_APPS = [
     'rest_framework',
     "rest_framework_simplejwt.token_blacklist",
     'corsheaders',
-    
+
     'users',
+    'common',
 ]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "EXCEPTION_HANDLER": "common.exceptions.custom_exception_handler",
 }
 
 SIMPLE_JWT = {
