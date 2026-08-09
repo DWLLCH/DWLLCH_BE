@@ -1,22 +1,27 @@
 from datetime import date
+from django.contrib.auth.password_validation import validate_password
 
 from rest_framework import serializers
 from .models import User
 
+class RegionSerializer(serializers.Serializer):
+    sido = serializers.CharField(max_length=50)
+    sigungu = serializers.CharField(max_length=50)
+    detailAddress = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
-        min_length=8,
+        validators=[validate_password],     # Django의 내장 비밀번호 유효성 검사기를 사용하여 비밀번호 유효성 검사
     )
     passwordConfirm = serializers.CharField(
         write_only=True,
     )
 
+    region = RegionSerializer()
+
     birthDate = serializers.DateField()
     protectionEndDate = serializers.DateField()
-
-    region = serializers.DictField()
 
     housingType = serializers.ChoiceField(
         choices=User.HousingType.choices,
@@ -62,30 +67,6 @@ class SignupSerializer(serializers.ModelSerializer):
             )
         return value
 
-# 추가 기능: 비밀번호 유효성 검사
-    # def validate_password(self, value):
-    #     if len(value) < 8:
-    #         raise serializers.ValidationError(
-    #             "비밀번호는 8자 이상이어야 합니다."
-    #         )
-
-    #     if not any(char.isupper() for char in value):
-    #         raise serializers.ValidationError(
-    #             "비밀번호에 대문자가 포함되어야 합니다."
-    #         )
-
-    #     if not any(char.isdigit() for char in value):
-    #         raise serializers.ValidationError(
-    #             "비밀번호에 숫자가 포함되어야 합니다."
-    #         )
-
-    #     if not any(not char.isalnum() for char in value):
-    #         raise serializers.ValidationError(
-    #             "비밀번호에 특수문자가 포함되어야 합니다."
-    #         )
-
-    #     return value
-
     def validate(self, attrs):
         if attrs["password"] != attrs["passwordConfirm"]:
             raise serializers.ValidationError({
@@ -95,18 +76,6 @@ class SignupSerializer(serializers.ModelSerializer):
         if attrs["birthDate"] > date.today():
             raise serializers.ValidationError({
                 "birthDate": "생년월일은 미래 날짜일 수 없습니다."
-            })
-
-        region = attrs["region"]
-
-        if not region.get("sido"):
-            raise serializers.ValidationError({
-                "region": "sido는 필수입니다."
-            })
-
-        if not region.get("sigungu"):
-            raise serializers.ValidationError({
-                "region": "sigungu는 필수입니다."
             })
 
         return attrs
@@ -122,15 +91,15 @@ class SignupSerializer(serializers.ModelSerializer):
         user = User(
             email=validated_data["email"],
             username=validated_data["username"],
-            birthDate=birth_date,
-            protectionEndDate=protection_end_date,
+            birth_date=birth_date,
+            protection_end_date=protection_end_date,
             sido=region["sido"],
             sigungu=region["sigungu"],
-            detailAddress=region.get("detailAddress"),
-            housingType=validated_data["housingType"],
-            incomeType=validated_data["incomeType"],
-            employmentType=validated_data["employmentType"],
-            educationStatus=validated_data["educationStatus"],
+            detail_address=region.get("detailAddress"),
+            housing_type=validated_data["housingType"],
+            income_type=validated_data["incomeType"],
+            employment_type=validated_data["employmentType"],
+            education_status=validated_data["educationStatus"],
         )
 
         user.set_password(password)
