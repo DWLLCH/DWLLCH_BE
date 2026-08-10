@@ -6,6 +6,9 @@ from rest_framework.response import Response
 from .models import Policy
 from .serializers import PolicyListSerializer, PolicyDetailSerializer
 
+from django.db.models import Q
+from rest_framework.permissions import AllowAny, IsAuthenticated
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -46,5 +49,33 @@ def home_guest(request):
     data = {
         "banner_message": "자립준비청년을 위한 정책 정보를 한눈에 확인하세요.",
         "popular_policies": PolicyListSerializer(popular_policies, many=True).data,
+    }
+    return Response(data, status=status.HTTP_200_OK)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def home_curation(request):
+    user = request.user
+
+    keywords = [
+        user.get_housing_type_display(),
+        user.get_income_type_display(),
+        user.get_employment_type_display(),
+        user.get_education_status_display(),
+    ]
+
+    query = Q()
+    for keyword in keywords:
+        query |= Q(target_condition__icontains=keyword)
+
+    policies = Policy.objects.filter(query).order_by("-created_at")[:10]
+
+    data = {
+        "user_summary": {
+            "sido": user.sido,
+            "sigungu": user.sigungu,
+            "protection_end_date": user.protection_end_date,
+        },
+        "curated_policies": PolicyListSerializer(policies, many=True).data,
     }
     return Response(data, status=status.HTTP_200_OK)
