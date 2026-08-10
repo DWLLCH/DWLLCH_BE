@@ -50,3 +50,9 @@ class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
         fields = ["status"]
+
+class ChecklistItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChecklistItem
+        fields = ["id", "content", "is_done", "order"]
+        read_only_fields = ["id", "content", "order"]

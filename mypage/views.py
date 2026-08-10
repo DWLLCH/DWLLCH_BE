@@ -12,6 +12,9 @@ from rest_framework.generics import get_object_or_404
 from .models import Application
 from .serializers import ApplicationSerializer, ApplicationStatusUpdateSerializer
 
+from .models import ChecklistItem
+from .serializers import ChecklistItemSerializer
+
 
 
 @api_view(["GET"])
@@ -73,6 +76,27 @@ def application_status_update(request, application_id):
     serializer = ApplicationStatusUpdateSerializer(
         application, data=request.data, partial=True
     )
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def checklist_list(request, application_id):
+    application = get_object_or_404(Application, id=application_id, user=request.user)
+    items = application.checklist_items.all()
+    serializer = ChecklistItemSerializer(items, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def checklist_item_update(request, application_id, item_id):
+    application = get_object_or_404(Application, id=application_id, user=request.user)
+    item = get_object_or_404(ChecklistItem, id=item_id, application=application)
+
+    serializer = ChecklistItemSerializer(item, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
