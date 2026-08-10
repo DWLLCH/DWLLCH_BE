@@ -37,3 +37,14 @@ def policy_detail(request, policy_id):
 
     serializer = PolicyDetailSerializer(policy)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def home_guest(request):
+    popular_policies = Policy.objects.all().order_by("-created_at")[:5]
+
+    data = {
+        "banner_message": "자립준비청년을 위한 정책 정보를 한눈에 확인하세요.",
+        "popular_policies": PolicyListSerializer(popular_policies, many=True).data,
+    }
+    return Response(data, status=status.HTTP_200_OK)

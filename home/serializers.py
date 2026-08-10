@@ -36,3 +36,6 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+class HomeGuestSerializer(serializers.Serializer):
+    banner_message = serializers.CharField()
+    popular_policies = PolicyListSerializer(many=True)
