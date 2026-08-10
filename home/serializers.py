@@ -39,3 +39,11 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
 class HomeGuestSerializer(serializers.Serializer):
     banner_message = serializers.CharField()
     popular_policies = PolicyListSerializer(many=True)
+
+class PolicyChatbotQuerySerializer(serializers.Serializer):
+    question = serializers.CharField(max_length=500)
+    policy_id = serializers.IntegerField(required=False)
+
+
+class PolicyChatbotResponseSerializer(serializers.Serializer):
+    answer = serializers.CharField()

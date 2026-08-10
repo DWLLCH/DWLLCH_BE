@@ -9,6 +9,9 @@ from .serializers import PolicyListSerializer, PolicyDetailSerializer
 from django.db.models import Q
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
+from .serializers import PolicyChatbotQuerySerializer
+from .services import get_policy_chatbot_answer
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -79,3 +82,23 @@ def home_curation(request):
         "curated_policies": PolicyListSerializer(policies, many=True).data,
     }
     return Response(data, status=status.HTTP_200_OK)
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def policy_chatbot_query(request):
+    serializer = PolicyChatbotQuerySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        answer = get_policy_chatbot_answer(
+            question=serializer.validated_data["question"],
+            policy_id=serializer.validated_data.get("policy_id"),
+        )
+    except Exception:
+        return Response(
+            {"detail": "챗봇 응답 생성 중 오류가 발생했습니다."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    return Response({"answer": answer}, status=status.HTTP_200_OK)
