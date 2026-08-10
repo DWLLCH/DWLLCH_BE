@@ -1,5 +1,6 @@
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .models import Policy
@@ -7,6 +8,7 @@ from .serializers import PolicyListSerializer, PolicyDetailSerializer
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def policy_list(request):
     queryset = Policy.objects.all().order_by("-created_at")
 
@@ -23,6 +25,7 @@ def policy_list(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def policy_detail(request, policy_id):
     try:
         policy = Policy.objects.get(id=policy_id)
