@@ -4,6 +4,7 @@ from django.db import models
 from home.models import Policy
 
 
+
 class Application(models.Model):
     class Status(models.TextChoices):
         PLANNED = "PLANNED", "신청 예정"
@@ -66,3 +67,4 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.message}"
+
