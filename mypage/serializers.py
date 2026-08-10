@@ -56,3 +56,8 @@ class ChecklistItemSerializer(serializers.ModelSerializer):
         model = ChecklistItem
         fields = ["id", "content", "is_done", "order"]
         read_only_fields = ["id", "content", "order"]
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["id", "message", "is_read", "created_at"]

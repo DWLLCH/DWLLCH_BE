@@ -10,4 +10,5 @@ urlpatterns = [
     path("mypage/applications/<int:application_id>/status", views.application_status_update, name="application-status-update"),
     path("mypage/applications/<int:application_id>/checklist", views.checklist_list, name="checklist-list"),
     path("mypage/applications/<int:application_id>/checklist/<int:item_id>", views.checklist_item_update, name="checklist-item-update"),
+    path("mypage/notifications", views.notification_list, name="notification-list"),
 ]

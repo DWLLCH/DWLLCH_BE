@@ -15,6 +15,9 @@ from .serializers import ApplicationSerializer, ApplicationStatusUpdateSerialize
 from .models import ChecklistItem
 from .serializers import ChecklistItemSerializer
 
+from .models import Notification
+from .serializers import NotificationSerializer
+
 
 
 @api_view(["GET"])
@@ -101,3 +104,10 @@ def checklist_item_update(request, application_id, item_id):
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def notification_list(request):
+    notifications = Notification.objects.filter(user=request.user)
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
