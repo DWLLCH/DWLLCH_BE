@@ -28,3 +28,25 @@ class ProfileSerializer(serializers.ModelSerializer):
             "employment_type",
             "education_status",
         ]
+
+class ApplicationSerializer(serializers.ModelSerializer):
+    policy_title = serializers.CharField(source="policy.title", read_only=True)
+
+    class Meta:
+        model = Application
+        fields = [
+            "id",
+            "policy",
+            "policy_title",
+            "status",
+            "memo",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Application
+        fields = ["status"]
