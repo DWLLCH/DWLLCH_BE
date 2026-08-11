@@ -23,4 +23,5 @@ urlpatterns = [
     path("", include("home.urls")),
     path("", include("mypage.urls")),
     path("", include("community.urls")),
+    path("", include("chat.urls")),
 ]
