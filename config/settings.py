@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'home',
     'mypage',
     'community',
+    'chat',
 ]
 
 REST_FRAMEWORK = {
