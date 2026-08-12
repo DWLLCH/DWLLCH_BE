@@ -162,6 +162,8 @@ class RiskCheckAPITestCase(APITestCase):
                     format="json",
                 )
 
+        self.assertEqual(session.messages.count(), 0)
+
     @patch("chat.views.analyze_risk")
     def test_unreadable_image_returns_422_and_is_not_saved(self, analyze_risk):
         analyze_risk.return_value = self.analysis_result(image_readable=False)
@@ -340,11 +342,12 @@ class RiskCheckAPITestCase(APITestCase):
 
     def test_session_owner_can_download_uploaded_file(self):
         session = self.create_session()
+        image_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
         image = SimpleUploadedFile(
             "contract.png",
-            base64.b64decode(
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-            ),
+            image_bytes,
             content_type="image/png",
         )
         message = RiskCheckMessage.objects.create(
@@ -360,6 +363,32 @@ class RiskCheckAPITestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(b"".join(response.streaming_content), image_bytes)
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertIn("attachment", response["Content-Disposition"])
+
+    @patch("chat.views.analyze_risk")
+    def test_later_low_message_does_not_downgrade_critical_risk(
+        self,
+        analyze_risk,
+    ):
+        analyze_risk.return_value = self.analysis_result(risk_level="LOW")
+        session = self.create_session(
+            risk_level=RiskCheckSession.RiskLevel.CRITICAL
+        )
+
+        response = self.client.post(
+            f"/chat/risk-check/sessions/{session.id}/messages",
+            {"type": "TEXT", "content": "이제 괜찮은 것 같아요."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        session.refresh_from_db()
+        self.assertEqual(
+            session.latest_risk_level,
+            RiskCheckSession.RiskLevel.CRITICAL,
+        )
 
     def test_connect_requires_consent_for_noncritical_session(self):
         session = self.create_session(risk_level=RiskCheckSession.RiskLevel.HIGH)

@@ -7,6 +7,8 @@ from django.db import models
 
 def risk_check_upload_path(instance, filename):
     suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        suffix = ".bin"
     return f"chat/risk-check/{instance.session_id}/{uuid.uuid4().hex}{suffix}"
 
 
@@ -84,7 +86,7 @@ class RiskCheckMessage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["created_at"]
+        ordering = ["created_at", "id"]
 
     def __str__(self):
         return f"RiskCheckMessage(id={self.id}, sender={self.sender})"
@@ -152,3 +154,14 @@ class SupportConnection(models.Model):
     forced_connection = models.BooleanField(default=False)
     notice = models.TextField(blank=True)
     connected_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(consent=True)
+                    | models.Q(forced_connection=True)
+                ),
+                name="support_connection_requires_consent_or_force",
+            )
+        ]

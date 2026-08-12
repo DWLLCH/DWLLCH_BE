@@ -1,5 +1,6 @@
 import logging
 import mimetypes
+import os
 
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
@@ -35,6 +36,14 @@ from chat.serializers import (
 from chat.services import GeminiRequestError, analyze_risk, structure_session
 
 logger = logging.getLogger(__name__)
+
+RISK_ORDER = {
+    RiskCheckSession.RiskLevel.NONE: 0,
+    RiskCheckSession.RiskLevel.LOW: 1,
+    RiskCheckSession.RiskLevel.MEDIUM: 2,
+    RiskCheckSession.RiskLevel.HIGH: 3,
+    RiskCheckSession.RiskLevel.CRITICAL: 4,
+}
 
 
 class RiskCheckSessionCreateView(APIView):  # 세션 생성
@@ -161,8 +170,14 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
                 },
             )
 
-            session.latest_risk_level = result.risk_level
-            session.save(update_fields=["latest_risk_level", "updated_at"])
+            if (
+                RISK_ORDER[result.risk_level]
+                > RISK_ORDER[session.latest_risk_level]
+            ):
+                session.latest_risk_level = result.risk_level
+                session.save(
+                    update_fields=["latest_risk_level", "updated_at"]
+                )
 
         return success_response(
             data={
@@ -200,8 +215,8 @@ class RiskCheckMessageReportView(APIView):  # 오류 신고
                     user=request.user,
                     reason=serializer.validated_data["reason"],
                 )
-        except IntegrityError:
-            raise AlreadyReportedException()
+        except IntegrityError as exc:
+            raise AlreadyReportedException() from exc
 
         return success_response(
             data={
@@ -248,14 +263,6 @@ class RiskCheckStructureView(APIView):  # 상황 구조화
             )
             raise GeminiServiceUnavailableException() from exc
 
-        risk_order = {
-            RiskCheckSession.RiskLevel.NONE: 0,
-            RiskCheckSession.RiskLevel.LOW: 1,
-            RiskCheckSession.RiskLevel.MEDIUM: 2,
-            RiskCheckSession.RiskLevel.HIGH: 3,
-            RiskCheckSession.RiskLevel.CRITICAL: 4,
-        }
-
         with transaction.atomic():
             report, _ = StructuredRiskReport.objects.update_or_create(
                 session=session,
@@ -272,8 +279,8 @@ class RiskCheckStructureView(APIView):  # 상황 구조화
             )
 
             if (
-                risk_order[result.risk_grade]
-                > risk_order[session.latest_risk_level]
+                RISK_ORDER[result.risk_grade]
+                > RISK_ORDER[session.latest_risk_level]
             ):
                 session.latest_risk_level = result.risk_grade
             session.status = RiskCheckSession.Status.STRUCTURED
@@ -373,7 +380,14 @@ class RiskCheckMessageFileView(APIView):
 
         content_type, _ = mimetypes.guess_type(message.file.name)
 
-        return FileResponse(
+        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+            content_type = "application/octet-stream"
+
+        response = FileResponse(
             message.file.open("rb"),
-            content_type=content_type or "application/octet-stream",
+            content_type=content_type,
+            as_attachment=True,
+            filename=os.path.basename(message.file.name),
         )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
