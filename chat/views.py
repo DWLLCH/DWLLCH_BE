@@ -1,6 +1,6 @@
 import logging
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -119,19 +119,16 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
                 "Gemini risk analysis failed: session_id=%s",
                 session.id,
             )
-            user_message.analysis_result = {
-                "status": "FAILED",
-                "error": str(exc),
-            }
-            user_message.save(update_fields=["analysis_result"])
+            if user_message.file:
+                user_message.file.delete(save=False)
+            user_message.delete()
             raise GeminiServiceUnavailableException() from exc
 
         if message_type == RiskCheckMessage.MessageType.IMAGE:
             if not result.image_readable:
-                user_message.analysis_result = {
-                    "imageReadable": False,
-                }
-                user_message.save(update_fields=["analysis_result"])
+                if user_message.file:
+                    user_message.file.delete(save=False)
+                user_message.delete()
                 raise ImageUnreadableException()
 
         analysis = {
@@ -187,7 +184,7 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
         )
 
 
-class RiskCheckMessageReportView(APIView):  # 오류 신고 성공
+class RiskCheckMessageReportView(APIView):  # 오류 신고
     permission_classes = [IsAuthenticated]
 
     def post(self, request, message_id):
@@ -201,11 +198,12 @@ class RiskCheckMessageReportView(APIView):  # 오류 신고 성공
         serializer.is_valid(raise_exception=True)
 
         try:
-            report = RiskCheckMessageReport.objects.create(
-                message=message,
-                user=request.user,
-                reason=serializer.validated_data["reason"],
-            )
+            with transaction.atomic():
+                report = RiskCheckMessageReport.objects.create(
+                    message=message,
+                    user=request.user,
+                    reason=serializer.validated_data["reason"],
+                )
         except IntegrityError:
             return Response(
                 {
