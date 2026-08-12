@@ -104,3 +104,12 @@ class ReportCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = ["reason"]
+
+class ScrapSerializer(serializers.ModelSerializer):
+    post_id = serializers.IntegerField(source="post.id", read_only=True)
+    post_title = serializers.CharField(source="post.title", read_only=True)
+    board_type = serializers.CharField(source="post.board_type", read_only=True)
+
+    class Meta:
+        model = Scrap
+        fields = ["id", "post_id", "post_title", "board_type", "created_at"]

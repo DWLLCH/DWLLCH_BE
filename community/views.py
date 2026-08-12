@@ -146,3 +146,39 @@ def comment_report(request, comment_id):
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+from .models import Scrap
+from .serializers import ScrapSerializer
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def post_scrap(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+
+    if request.method == "POST":
+        scrap, created = Scrap.objects.get_or_create(user=request.user, post=post)
+        if not created:
+            return Response(
+                {"detail": "이미 스크랩한 게시글입니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = ScrapSerializer(scrap)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    scrap = Scrap.objects.filter(user=request.user, post=post).first()
+    if not scrap:
+        return Response(
+            {"detail": "스크랩하지 않은 게시글입니다."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    scrap.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def scrap_list(request):
+    scraps = Scrap.objects.filter(user=request.user)
+    serializer = ScrapSerializer(scraps, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
