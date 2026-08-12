@@ -57,7 +57,7 @@ class AuthAPITestCase(APITestCase):
         self.create_test_user()
 
         response = self.client.post(
-            "/api/v1/auth/login",
+            "/auth/login",
             {
                 "email": "test@example.com",
                 "password": "password123!",
@@ -74,7 +74,7 @@ class AuthAPITestCase(APITestCase):
     
     def test_signup_success(self):
         response = self.client.post(
-            "/api/v1/auth/signup",
+            "/auth/signup",
             self.user_data,
             format="json",
         )
@@ -87,7 +87,7 @@ class AuthAPITestCase(APITestCase):
         self.create_test_user(username="otheruser",)
 
         response = self.client.post(
-            "/api/v1/auth/signup/email/check",
+            "/auth/signup/email/check",
             {"email": "test@example.com"},
             format="json",
         )
@@ -102,7 +102,7 @@ class AuthAPITestCase(APITestCase):
         )
 
         response = self.client.post(
-            "/api/v1/auth/signup/username/check",
+            "/auth/signup/username/check",
             {"username": "testuser"},
             format="json",
         )
@@ -113,7 +113,7 @@ class AuthAPITestCase(APITestCase):
         self.create_test_user()
 
         response = self.client.post(
-            "/api/v1/auth/login",
+            "/auth/login",
             {
                 "email": "test@example.com",
                 "password": "password123!",
@@ -129,7 +129,7 @@ class AuthAPITestCase(APITestCase):
         self.create_test_user(password="Abcd1234!",)
 
         response = self.client.post(
-            "/api/v1/auth/login",
+            "/auth/login",
             {
                 "email": "test@example.com",
                 "password": "WrongPassword!",
@@ -143,7 +143,7 @@ class AuthAPITestCase(APITestCase):
         _, refresh_token = self.get_tokens()
 
         response = self.client.post(
-            "/api/v1/auth/reissue",
+            "/auth/reissue",
             {
                 "refreshToken": refresh_token,
             },
@@ -167,7 +167,7 @@ class AuthAPITestCase(APITestCase):
         self.create_test_user()
 
         response = self.client.post(
-            "/api/v1/auth/reissue",
+            "/auth/reissue",
             {
                 "refreshToken": "invalid-refresh-token",
             },
@@ -188,7 +188,7 @@ class AuthAPITestCase(APITestCase):
         )
 
         response = self.client.post(
-            "/api/v1/auth/logout",
+            "/auth/logout",
             {
                 "refreshToken": refresh_token,
             },
@@ -205,7 +205,7 @@ class AuthAPITestCase(APITestCase):
         )
 
         logout_response = self.client.post(
-            "/api/v1/auth/logout",
+            "/auth/logout",
             {
                 "refreshToken": refresh_token,
             },
@@ -219,7 +219,7 @@ class AuthAPITestCase(APITestCase):
 
         # 로그아웃 후 같은 Refresh Token으로 재발급 시도
         reissue_response = self.client.post(
-            "/api/v1/auth/reissue",
+            "/auth/reissue",
             {
                 "refreshToken": refresh_token,
             },
@@ -239,7 +239,7 @@ class AuthAPITestCase(APITestCase):
         )
 
         response = self.client.patch(
-            "/api/v1/auth/password",
+            "/auth/password",
             {
                 "currentPassword": "password123!",
                 "newPassword": "NewPassword123!",
@@ -257,7 +257,7 @@ class AuthAPITestCase(APITestCase):
 
         # 비밀번호 변경 후 기존 Refresh Token이 폐기되었는지 확인
         response = self.client.post(
-            "/api/v1/auth/reissue",
+            "/auth/reissue",
             {
                 "refreshToken": refresh_token,
             },
@@ -277,7 +277,7 @@ class AuthAPITestCase(APITestCase):
         )
 
         response = self.client.delete(
-            "/api/v1/auth/account",
+            "/auth/account",
             {
                 "password": "password123!",
                 "reason": "서비스 이용 종료",
