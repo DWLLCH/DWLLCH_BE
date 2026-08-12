@@ -17,7 +17,8 @@ from .serializers import (
     CommentSerializer,
     CommentCreateUpdateSerializer,
 )
-
+from .models import Report
+from .serializers import ReportCreateSerializer
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -114,3 +115,34 @@ def comment_detail(request, comment_id):
 
     comment.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def post_report(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+
+    serializer = ReportCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(
+            reporter=request.user,
+            target_type=Report.TargetType.POST,
+            post=post,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def comment_report(request, comment_id):
+    comment = get_object_or_404(Comment, id=comment_id)
+
+    serializer = ReportCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(
+            reporter=request.user,
+            target_type=Report.TargetType.COMMENT,
+            comment=comment,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

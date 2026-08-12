@@ -99,3 +99,8 @@ class CommentCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ["content", "is_anonymous"]
+
+class ReportCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ["reason"]
