@@ -1,3 +1,77 @@
+from django.conf import settings
 from django.db import models
 
-# Create your models here.
+
+class Post(models.Model):
+    class BoardType(models.TextChoices):
+        TIP = "TIP", "꿀팁"
+        LATEST = "LATEST", "최신"
+        WORRY = "WORRY", "고민"
+        FREE = "FREE", "자유"
+
+    board_type = models.CharField(max_length=20, choices=BoardType.choices)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="posts",
+    )
+    title = models.CharField(max_length=100)
+    content = models.TextField()
+    is_anonymous = models.BooleanField(default=False)
+    allow_notification = models.BooleanField(default=True)
+    view_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class Comment(models.Model):
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    content = models.CharField(max_length=500)
+    is_anonymous = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.content[:20]}"
+
+
+class Report(models.Model):
+    class TargetType(models.TextChoices):
+        POST = "POST", "게시글"
+        COMMENT = "COMMENT", "댓글"
+
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reports",
+    )
+    target_type = models.CharField(max_length=10, choices=TargetType.choices)
+    post = models.ForeignKey(
+        Post, on_delete=models.CASCADE, null=True, blank=True, related_name="reports"
+    )
+    comment = models.ForeignKey(
+        Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="reports"
+    )
+    reason = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.reporter} reported {self.target_type}"
