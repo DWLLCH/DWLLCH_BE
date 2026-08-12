@@ -1,12 +1,24 @@
 from rest_framework.views import exception_handler
 
+
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     if response is None:
         return response
-    
+
     status_code = response.status_code
+    custom_code = getattr(exc, "api_code", None)
+
+    if custom_code:
+        detail = response.data.get("detail", str(exc))
+        response.data = {
+            "success": False,
+            "code": custom_code,
+            "message": str(detail),
+            "data": None,
+        }
+        return response
 
     if status_code == 401:
         code = "AUTH_401_UNAUTHORIZED"
@@ -28,7 +40,6 @@ def custom_exception_handler(exc, context):
         code = "COMMON_500_SERVER_ERROR"
         message = "서버 내부 오류가 발생했습니다."
 
-    # 기존 DRF validation error 보존
     data = response.data if status_code == 400 else None
 
     response.data = {
