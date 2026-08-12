@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'common',
     'home',
     'mypage',
+    'community',
 ]
 
 REST_FRAMEWORK = {
