@@ -75,6 +75,11 @@ class MessageCreateSerializer(serializers.Serializer):
                 {"content": "TEXT 메시지는 content가 필요합니다."}
             )
 
+        if message_type == RiskCheckMessage.MessageType.TEXT and uploaded_file:
+            raise serializers.ValidationError(
+                {"file": "TEXT 메시지에는 이미지 파일을 첨부할 수 없습니다."}
+            )
+
         if message_type == RiskCheckMessage.MessageType.IMAGE and not uploaded_file:
             raise serializers.ValidationError(
                 {"file": "IMAGE 메시지는 이미지 파일이 필요합니다."}

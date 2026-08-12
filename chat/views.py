@@ -111,7 +111,7 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
         try:
             result = analyze_risk(
                 content=content,
-                uploaded_file=user_message.file if uploaded_file else None,
+                uploaded_file=uploaded_file,
                 previous_messages=previous_messages,
             )
         except Exception as exc:

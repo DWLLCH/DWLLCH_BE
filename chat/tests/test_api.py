@@ -112,6 +112,29 @@ class RiskCheckAPITestCase(APITestCase):
         session.refresh_from_db()
         self.assertEqual(session.latest_risk_level, RiskCheckSession.RiskLevel.HIGH)
 
+    def test_text_message_rejects_image_file(self):
+        session = self.create_session()
+        image = SimpleUploadedFile(
+            "contract.png",
+            base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            ),
+            content_type="image/png",
+        )
+
+        response = self.client.post(
+            f"/chat/risk-check/sessions/{session.id}/messages",
+            {
+                "type": "TEXT",
+                "content": "텍스트 메시지입니다.",
+                "file": image,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(session.messages.count(), 0)
+
     @patch("chat.views.analyze_risk")
     def test_ai_failure_does_not_leave_duplicate_user_message(self, analyze_risk):
         analyze_risk.side_effect = RuntimeError("temporary failure")

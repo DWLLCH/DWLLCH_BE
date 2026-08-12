@@ -1,4 +1,5 @@
 import json
+import mimetypes
 from typing import Literal
 
 from django.conf import settings
@@ -87,7 +88,10 @@ def _get_client():
     if not settings.GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        http_options=types.HttpOptions(timeout=settings.GEMINI_TIMEOUT_MS),
+    )
 
 
 def _parse_response(response, schema):
@@ -131,6 +135,15 @@ def analyze_risk(content, uploaded_file=None, previous_messages=None):
     contents = [prompt]
 
     if uploaded_file:
+        mime_type = getattr(uploaded_file, "content_type", None)
+
+        if not mime_type:
+            file_name = getattr(uploaded_file, "name", "")
+            mime_type, _ = mimetypes.guess_type(file_name)
+
+        if not mime_type or not mime_type.startswith("image/"):
+            raise ValueError("지원되지 않는 이미지 형식입니다.")
+
         uploaded_file.seek(0)
         image_bytes = uploaded_file.read()
         uploaded_file.seek(0)
@@ -138,7 +151,7 @@ def analyze_risk(content, uploaded_file=None, previous_messages=None):
         contents.append(
             types.Part.from_bytes(
                 data=image_bytes,
-                mime_type=uploaded_file.content_type,
+                mime_type=mime_type,
             )
         )
 
