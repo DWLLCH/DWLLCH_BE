@@ -26,6 +26,11 @@ urlpatterns = [
         name="message-report",
     ),
     path(
+        "chat/risk-check/messages/<int:message_id>/file",
+        views.RiskCheckMessageFileView.as_view(),
+        name="message-file",
+    ),
+    path(
         "chat/sos/sessions/<int:session_id>/structure",
         views.RiskCheckStructureView.as_view(),
         name="session-structure",

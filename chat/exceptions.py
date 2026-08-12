@@ -23,3 +23,9 @@ class GeminiServiceUnavailableException(ChatAPIException):
     status_code = 503
     api_code = "CHAT_503_AI_SERVICE_UNAVAILABLE"
     default_detail = "AI 분석 서비스에 일시적인 문제가 발생했습니다."
+
+
+class AlreadyReportedException(ChatAPIException):
+    status_code = 400
+    api_code = "CHAT_400_ALREADY_REPORTED"
+    default_detail = "이미 신고한 AI 판독 결과입니다."

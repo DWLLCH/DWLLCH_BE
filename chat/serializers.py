@@ -1,3 +1,4 @@
+from django.urls import reverse
 from rest_framework import serializers
 
 from chat.models import (
@@ -28,11 +29,15 @@ class RiskCheckMessageSerializer(serializers.ModelSerializer):
         if not obj.file:
             return None
 
+        path = reverse(
+            "chat:message-file",
+            kwargs={"message_id": obj.id},
+        )
         request = self.context.get("request")
         if request:
-            return request.build_absolute_uri(obj.file.url)
+            return request.build_absolute_uri(path)
 
-        return obj.file.url
+        return path
 
 
 class RiskCheckSessionSerializer(serializers.ModelSerializer):

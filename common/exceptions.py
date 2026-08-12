@@ -11,7 +11,10 @@ def custom_exception_handler(exc, context):
     custom_code = getattr(exc, "api_code", None)
 
     if custom_code:
-        detail = response.data.get("detail", str(exc))
+        if isinstance(response.data, dict):
+            detail = response.data.get("detail", str(exc))
+        else:
+            detail = str(exc)
         response.data = {
             "success": False,
             "code": custom_code,

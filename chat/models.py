@@ -1,5 +1,13 @@
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.db import models
+
+
+def risk_check_upload_path(instance, filename):
+    suffix = Path(filename).suffix.lower()
+    return f"chat/risk-check/{instance.session_id}/{uuid.uuid4().hex}{suffix}"
 
 
 class RiskCheckSession(models.Model):
@@ -63,7 +71,7 @@ class RiskCheckMessage(models.Model):
     )
     content = models.TextField(blank=True)
     file = models.ImageField(
-        upload_to="chat/risk-check/%Y/%m/%d/",
+        upload_to=risk_check_upload_path,
         blank=True,
         null=True,
     )

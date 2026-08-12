@@ -2,9 +2,10 @@ import json
 import mimetypes
 from typing import Literal
 
+import httpx
 from django.conf import settings
 from google import genai
-from google.genai import types
+from google.genai import errors as genai_errors, types
 from pydantic import BaseModel, Field
 
 
@@ -34,6 +35,10 @@ class StructuredReportResult(BaseModel):
     risk_type: str = ""
     risk_grade: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     missing_fields: list[str] = Field(default_factory=list)
+
+
+class GeminiRequestError(Exception):
+    """Gemini API 또는 네트워크 호출 실패."""
 
 
 RISK_ANALYSIS_PROMPT = """
@@ -155,14 +160,17 @@ def analyze_risk(content, uploaded_file=None, previous_messages=None):
             )
         )
 
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=RiskAnalysisResult,
-        ),
-    )
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=RiskAnalysisResult,
+            ),
+        )
+    except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
+        raise GeminiRequestError from exc
 
     return _parse_response(response, RiskAnalysisResult)
 
@@ -171,18 +179,21 @@ def structure_session(messages):
     client = _get_client()
     history = _format_history(messages)
 
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=f"""
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=f"""
 {STRUCTURE_PROMPT}
 
 대화 내역:
 {history}
 """,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=StructuredReportResult,
-        ),
-    )
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=StructuredReportResult,
+            ),
+        )
+    except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
+        raise GeminiRequestError from exc
 
     return _parse_response(response, StructuredReportResult)

@@ -17,6 +17,7 @@ from chat.models import (
 )
 from chat.services import (
     ExternalAppLink,
+    GeminiRequestError,
     RiskAnalysisResult,
     StructuredReportResult,
 )
@@ -137,7 +138,7 @@ class RiskCheckAPITestCase(APITestCase):
 
     @patch("chat.views.analyze_risk")
     def test_ai_failure_does_not_leave_duplicate_user_message(self, analyze_risk):
-        analyze_risk.side_effect = RuntimeError("temporary failure")
+        analyze_risk.side_effect = GeminiRequestError("temporary failure")
         session = self.create_session()
 
         response = self.client.post(
@@ -149,6 +150,17 @@ class RiskCheckAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
         self.assertEqual(response.data["code"], "CHAT_503_AI_SERVICE_UNAVAILABLE")
         self.assertEqual(session.messages.count(), 0)
+
+    def test_programming_error_is_not_reported_as_gemini_outage(self):
+        session = self.create_session()
+
+        with patch("chat.views.analyze_risk", side_effect=AttributeError("bug")):
+            with self.assertRaises(AttributeError):
+                self.client.post(
+                    f"/chat/risk-check/sessions/{session.id}/messages",
+                    {"type": "TEXT", "content": "분석해 주세요."},
+                    format="json",
+                )
 
     @patch("chat.views.analyze_risk")
     def test_unreadable_image_returns_422_and_is_not_saved(self, analyze_risk):
@@ -189,6 +201,40 @@ class RiskCheckAPITestCase(APITestCase):
         self.assertEqual(second.data["code"], "CHAT_400_ALREADY_REPORTED")
         self.assertEqual(RiskCheckMessageReport.objects.count(), 1)
 
+    def test_other_user_cannot_access_session_bound_endpoints(self):
+        session = self.create_session(user=self.other_user)
+        message = RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.ASSISTANT,
+            content="AI 응답",
+        )
+
+        requests = [
+            self.client.post(
+                f"/chat/risk-check/sessions/{session.id}/messages",
+                {"type": "TEXT", "content": "접근 시도"},
+                format="json",
+            ),
+            self.client.post(
+                f"/chat/sos/sessions/{session.id}/structure",
+                {},
+                format="json",
+            ),
+            self.client.post(
+                f"/chat/sos/sessions/{session.id}/connect",
+                {"consent": True, "connectTo": "SUPPORT_STAFF"},
+                format="json",
+            ),
+            self.client.post(
+                f"/chat/risk-check/messages/{message.id}/report",
+                {"reason": "접근 시도"},
+                format="json",
+            ),
+        ]
+
+        for response in requests:
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     @patch("chat.views.structure_session")
     def test_structure_session_returns_report_and_missing_fields(self, structure_session):
         structure_session.return_value = StructuredReportResult(
@@ -215,6 +261,105 @@ class RiskCheckAPITestCase(APITestCase):
         self.assertTrue(StructuredRiskReport.objects.filter(session=session).exists())
         session.refresh_from_db()
         self.assertEqual(session.status, RiskCheckSession.Status.STRUCTURED)
+
+    @patch("chat.views.structure_session")
+    def test_structure_preserves_existing_critical_risk(self, structure_session):
+        structure_session.return_value = StructuredReportResult(
+            risk_grade="HIGH",
+            missing_fields=[],
+        )
+        session = self.create_session(
+            risk_level=RiskCheckSession.RiskLevel.CRITICAL
+        )
+        RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.USER,
+            content="도움이 필요합니다.",
+        )
+
+        response = self.client.post(
+            f"/chat/sos/sessions/{session.id}/structure",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        session.refresh_from_db()
+        self.assertEqual(
+            session.latest_risk_level,
+            RiskCheckSession.RiskLevel.CRITICAL,
+        )
+
+    @patch("chat.views.structure_session")
+    def test_structure_uses_only_latest_twenty_messages(self, structure_session):
+        structure_session.return_value = StructuredReportResult(
+            risk_grade="LOW",
+            missing_fields=[],
+        )
+        session = self.create_session()
+        for index in range(25):
+            RiskCheckMessage.objects.create(
+                session=session,
+                sender=RiskCheckMessage.Sender.USER,
+                content=f"message-{index}",
+            )
+
+        response = self.client.post(
+            f"/chat/sos/sessions/{session.id}/structure",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        messages = structure_session.call_args.args[0]
+        self.assertEqual(len(messages), 20)
+        self.assertEqual(messages[0].content, "message-5")
+        self.assertEqual(messages[-1].content, "message-24")
+
+    def test_uploaded_file_requires_session_owner(self):
+        session = self.create_session(user=self.other_user)
+        image = SimpleUploadedFile(
+            "contract.png",
+            base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            ),
+            content_type="image/png",
+        )
+        message = RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.USER,
+            type=RiskCheckMessage.MessageType.IMAGE,
+            file=image,
+        )
+
+        response = self.client.get(
+            f"/chat/risk-check/messages/{message.id}/file"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_session_owner_can_download_uploaded_file(self):
+        session = self.create_session()
+        image = SimpleUploadedFile(
+            "contract.png",
+            base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            ),
+            content_type="image/png",
+        )
+        message = RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.USER,
+            type=RiskCheckMessage.MessageType.IMAGE,
+            file=image,
+        )
+
+        response = self.client.get(
+            f"/chat/risk-check/messages/{message.id}/file"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "image/png")
 
     def test_connect_requires_consent_for_noncritical_session(self):
         session = self.create_session(risk_level=RiskCheckSession.RiskLevel.HIGH)
