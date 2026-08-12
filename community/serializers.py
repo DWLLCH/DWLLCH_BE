@@ -72,3 +72,30 @@ class PostCreateUpdateSerializer(serializers.ModelSerializer):
             "allow_notification",
         ]
         read_only_fields = ["id"]
+
+class CommentSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = [
+            "id",
+            "post",
+            "author_name",
+            "content",
+            "is_anonymous",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "post", "created_at", "updated_at"]
+
+    def get_author_name(self, obj):
+        if obj.is_anonymous:
+            return "익명"
+        return obj.author.username
+
+
+class CommentCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        fields = ["content", "is_anonymous"]

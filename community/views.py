@@ -12,6 +12,12 @@ from .serializers import (
     PostListSerializer,
 )
 
+from .models import Comment
+from .serializers import (
+    CommentSerializer,
+    CommentCreateUpdateSerializer,
+)
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -64,4 +70,47 @@ def post_detail(request, post_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     post.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def comment_list(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+
+    if request.method == "GET":
+        comments = post.comments.all()
+        serializer = CommentSerializer(comments, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    if not request.user.is_authenticated:
+        return Response(
+            {"detail": "로그인이 필요합니다."}, status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    serializer = CommentCreateUpdateSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(author=request.user, post=post)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def comment_detail(request, comment_id):
+    comment = get_object_or_404(Comment, id=comment_id)
+
+    if comment.author != request.user:
+        return Response(
+            {"detail": "본인이 작성한 댓글만 수정/삭제할 수 있습니다."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if request.method == "PATCH":
+        serializer = CommentCreateUpdateSerializer(comment, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    comment.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
