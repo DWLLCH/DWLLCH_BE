@@ -6,7 +6,7 @@ import httpx
 from django.conf import settings
 from google import genai
 from google.genai import errors as genai_errors, types
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class ExternalAppLink(BaseModel):
@@ -172,7 +172,10 @@ def analyze_risk(content, uploaded_file=None, previous_messages=None):
     except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
         raise GeminiRequestError from exc
 
-    return _parse_response(response, RiskAnalysisResult)
+    try:
+        return _parse_response(response, RiskAnalysisResult)
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc
 
 
 def structure_session(messages):
@@ -196,4 +199,7 @@ def structure_session(messages):
     except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
         raise GeminiRequestError from exc
 
-    return _parse_response(response, StructuredReportResult)
+    try:
+        return _parse_response(response, StructuredReportResult)
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc
