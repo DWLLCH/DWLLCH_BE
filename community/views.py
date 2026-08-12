@@ -2,40 +2,37 @@ from django.db.models import F
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Post
+from .models import Post, Comment, Report, Scrap
 from .serializers import (
     PostCreateUpdateSerializer,
     PostDetailSerializer,
     PostListSerializer,
-)
-
-from .models import Comment
-from .serializers import (
     CommentSerializer,
     CommentCreateUpdateSerializer,
+    ReportCreateSerializer,
+    ScrapSerializer,
 )
-from .models import Report
-from .serializers import ReportCreateSerializer
+
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
-def post_list(request):
+@permission_classes([AllowAny])
+def post_list(request, board_type):
     if request.method == "GET":
-        posts = Post.objects.select_related("author").all()
-
-        board_type = request.query_params.get("board_type")
-        if board_type:
-            posts = posts.filter(board_type=board_type)
-
+        posts = Post.objects.select_related("author").filter(board_type=board_type)
         serializer = PostListSerializer(posts, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    if not request.user.is_authenticated:
+        return Response(
+            {"detail": "로그인이 필요합니다."}, status=status.HTTP_401_UNAUTHORIZED
+        )
+
     serializer = PostCreateUpdateSerializer(data=request.data)
     if serializer.is_valid():
-        post = serializer.save(author=request.user)
+        post = serializer.save(author=request.user, board_type=board_type)
         return Response(
             PostDetailSerializer(post, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -44,7 +41,7 @@ def post_list(request):
 
 
 @api_view(["GET", "PATCH", "DELETE"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def post_detail(request, post_id):
     post = get_object_or_404(Post, id=post_id)
 
@@ -54,7 +51,7 @@ def post_detail(request, post_id):
         serializer = PostDetailSerializer(post, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    if post.author != request.user:
+    if not request.user.is_authenticated or post.author != request.user:
         return Response(
             {"detail": "본인이 작성한 게시글만 수정/삭제할 수 있습니다."},
             status=status.HTTP_403_FORBIDDEN,
@@ -73,6 +70,7 @@ def post_detail(request, post_id):
     post.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
+
 @api_view(["GET", "POST"])
 @permission_classes([AllowAny])
 def comment_list(request, post_id):
@@ -90,8 +88,11 @@ def comment_list(request, post_id):
 
     serializer = CommentCreateUpdateSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save(author=request.user, post=post)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        comment = serializer.save(author=request.user, post=post)
+        return Response(
+            CommentSerializer(comment).data,
+            status=status.HTTP_201_CREATED,
+        )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -115,6 +116,7 @@ def comment_detail(request, comment_id):
 
     comment.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -146,9 +148,6 @@ def comment_report(request, comment_id):
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-from .models import Scrap
-from .serializers import ScrapSerializer
 
 
 @api_view(["POST", "DELETE"])

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Post
+from .models import Post, Comment, Report, Scrap
 
 
 class PostListSerializer(serializers.ModelSerializer):
@@ -71,7 +71,7 @@ class PostCreateUpdateSerializer(serializers.ModelSerializer):
             "is_anonymous",
             "allow_notification",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id","board_type"]
 
 class CommentSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
