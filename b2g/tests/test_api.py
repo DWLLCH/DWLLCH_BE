@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -113,24 +113,27 @@ class B2GDashboardAPITestCase(APITestCase):
             linkage_consented=True,
         )
 
-        now = timezone.now()
+        fixed_reference = timezone.make_aware(
+            datetime(2026, 8, 13, 14, 0, 0)
+        )
 
         ConsultRequest.objects.filter(
             id=self.high_request.id
         ).update(
-            received_at=now - timedelta(minutes=60),
-            assigned_at=now - timedelta(minutes=30),
+            received_at=fixed_reference - timedelta(minutes=60),
+            assigned_at=fixed_reference - timedelta(minutes=30),
         )
 
         ConsultRequest.objects.filter(
             id=self.critical_request.id
         ).update(
-            received_at=now - timedelta(minutes=120),
-            assigned_at=now - timedelta(minutes=80),
-            resolved_at=now,
+            received_at=fixed_reference - timedelta(minutes=120),
+            assigned_at=fixed_reference - timedelta(minutes=80),
+            resolved_at=fixed_reference,
         )
 
         self.client.force_authenticate(user=self.admin_user)
+        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.organization.id))
 
     def create_user(self, username, email):
         return User.objects.create_user(
@@ -164,6 +167,7 @@ class B2GDashboardAPITestCase(APITestCase):
 
     def test_non_admin_cannot_access_dashboard(self):
         self.client.force_authenticate(user=self.normal_user)
+        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.organization.id))
 
         response = self.client.get("/b2g/dashboard/requests")
 
