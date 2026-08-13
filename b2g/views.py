@@ -3,11 +3,15 @@ from datetime import timedelta
 
 from django.db.models import (
     Avg,
+    Case,
     Count,
     DurationField,
     ExpressionWrapper,
     F,
+    IntegerField,
     Q,
+    Value,
+    When,
 )
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from django.utils import timezone
@@ -43,7 +47,6 @@ class ConsultRequestListView(DashboardBaseView):
                 organization=request.organization,
                 linkage_consented=True,
             )
-            .select_related("requester")
         )
 
         urgency_level = request.query_params.get("urgencyLevel")
@@ -76,10 +79,10 @@ class ConsultRequestListView(DashboardBaseView):
         try:
             page = int(request.query_params.get("page", 0))
             size = int(request.query_params.get("size", 20))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
             raise InvalidDashboardParameter(
                 "page와 size는 정수여야 합니다."
-            )
+            ) from error
 
         if page < 0 or size < 1 or size > 100:
             raise InvalidDashboardParameter(
@@ -115,10 +118,10 @@ class ConsultRequestListView(DashboardBaseView):
     def _apply_sort(self, queryset, sort):
         try:
             field_name, direction = sort.split(",", maxsplit=1)
-        except ValueError:
+        except ValueError as error:
             raise InvalidDashboardParameter(
                 "sort는 '필드,asc' 또는 '필드,desc' 형식이어야 합니다."
-            )
+            ) from error
 
         if direction not in {"asc", "desc"}:
             raise InvalidDashboardParameter(
@@ -137,7 +140,6 @@ class ConsultRequestListView(DashboardBaseView):
             )
 
         if field_name == "urgencyLevel":
-            from django.db.models import Case, IntegerField, Value, When
 
             queryset = queryset.annotate(
                 urgency_rank=Case(

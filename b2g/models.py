@@ -1,4 +1,4 @@
-import uuid
+import uuid, secrets
 
 from django.conf import settings
 from django.db import models
@@ -43,6 +43,39 @@ class OrganizationMembership(models.Model):
     def __str__(self):
         return f"{self.organization.name} - {self.user.email}"
 
+def generate_user_alias():
+    return f"청년_{secrets.token_hex(6)}"
+
+
+class OrganizationUserAlias(models.Model):
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="user_aliases",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="organization_aliases",
+    )
+    alias = models.CharField(
+        max_length=30,
+        unique=True,
+        default=generate_user_alias,
+        editable=False,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "user"],
+                name="unique_organization_user_alias",
+            )
+        ]
+
+    def __str__(self):
+        return self.alias
 
 class RequesterAlias(models.Model):
     organization = models.ForeignKey(
@@ -158,11 +191,11 @@ class ConsultRequest(models.Model):
 
     @property
     def user_alias(self):
-        alias_obj, _ = RequesterAlias.objects.get_or_create(
+        alias, _ = OrganizationUserAlias.objects.get_or_create(
             organization=self.organization,
-            requester=self.requester,
+            user=self.requester,
         )
-        return str(alias_obj)
+        return alias.alias
 
     def __str__(self):
         return f"ConsultRequest(id={self.id}, status={self.status})"

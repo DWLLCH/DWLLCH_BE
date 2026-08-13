@@ -4,6 +4,7 @@ from b2g.models import (
     ConsultRequest,
     Organization,
     OrganizationMembership,
+    OrganizationUserAlias,
 )
 
 
@@ -56,3 +57,12 @@ class ConsultRequestAdmin(admin.ModelAdmin):
         "summary",
         "requester__email",
     )
+
+@admin.register(OrganizationUserAlias)
+class OrganizationUserAliasAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "organization",
+        "user",
+        "alias",
+    )   
