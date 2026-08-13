@@ -5,6 +5,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from users.models import RefreshToken
+
 from b2g.models import (
     ConsultRequest,
     Organization,
@@ -386,4 +388,87 @@ class B2GDashboardAPITestCase(APITestCase):
         self.assertEqual(
             response.data["code"],
             "AUTH_403_FORBIDDEN",
+        )
+
+    def test_my_organizations_returns_admin_memberships(self):
+        inactive_organization = Organization.objects.create(
+            name="비활성 관리자 기관",
+            license_active=True,
+        )
+        non_admin_organization = Organization.objects.create(
+            name="일반 구성원 기관",
+            license_active=True,
+        )
+        OrganizationMembership.objects.create(
+            organization=inactive_organization,
+            user=self.admin_user,
+            is_admin=True,
+            is_active=False,
+        )
+        OrganizationMembership.objects.create(
+            organization=non_admin_organization,
+            user=self.admin_user,
+            is_admin=False,
+            is_active=True,
+        )
+
+        response = self.client.get("/b2g/organizations/me")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["data"]["organizations"],
+            [
+                {
+                    "organizationId": self.organization.id,
+                    "name": self.organization.name,
+                    "licenseActive": True,
+                }
+            ],
+        )
+
+
+    def test_account_delete_with_retained_consult_request_returns_409(self):
+        stored_token = RefreshToken.objects.create(
+            user=self.requester,
+            token="stored-refresh-token",
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+        self.client.force_authenticate(user=self.requester)
+        self.client.credentials()
+
+        response = self.client.delete(
+            "/auth/account",
+            {"password": "TestPassword123!"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(
+            response.data["code"],
+            "USER_409_RETAINED_DATA_EXISTS",
+        )
+        self.assertTrue(User.objects.filter(id=self.requester.id).exists())
+        self.assertTrue(
+            ConsultRequest.objects.filter(
+                requester_id=self.requester.id
+            ).exists()
+        )
+        self.assertTrue(
+            RefreshToken.objects.filter(id=stored_token.id).exists()
+        )
+
+
+    def test_my_organizations_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        self.client.credentials()
+
+        response = self.client.get("/b2g/organizations/me")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+        self.assertEqual(
+            response.data["code"],
+            "AUTH_401_UNAUTHORIZED",
         )
