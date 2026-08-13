@@ -391,6 +391,27 @@ class B2GDashboardAPITestCase(APITestCase):
         )
 
     def test_my_organizations_returns_admin_memberships(self):
+        inactive_organization = Organization.objects.create(
+            name="비활성 관리자 기관",
+            license_active=True,
+        )
+        non_admin_organization = Organization.objects.create(
+            name="일반 구성원 기관",
+            license_active=True,
+        )
+        OrganizationMembership.objects.create(
+            organization=inactive_organization,
+            user=self.admin_user,
+            is_admin=True,
+            is_active=False,
+        )
+        OrganizationMembership.objects.create(
+            organization=non_admin_organization,
+            user=self.admin_user,
+            is_admin=False,
+            is_active=True,
+        )
+
         response = self.client.get("/b2g/organizations/me")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -434,4 +455,20 @@ class B2GDashboardAPITestCase(APITestCase):
         )
         self.assertTrue(
             RefreshToken.objects.filter(id=stored_token.id).exists()
+        )
+
+
+    def test_my_organizations_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        self.client.credentials()
+
+        response = self.client.get("/b2g/organizations/me")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+        self.assertEqual(
+            response.data["code"],
+            "AUTH_401_UNAUTHORIZED",
         )
