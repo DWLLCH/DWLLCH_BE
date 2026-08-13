@@ -416,7 +416,7 @@ class RiskCheckMessageFileView(APIView):
         response = FileResponse(
             message.file.open("rb"),
             content_type=content_type,
-            as_attachment=True,
+            as_attachment=False,
             filename=os.path.basename(message.file.name),
         )
         response["X-Content-Type-Options"] = "nosniff"
