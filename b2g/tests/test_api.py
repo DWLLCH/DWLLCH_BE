@@ -402,3 +402,26 @@ class B2GDashboardAPITestCase(APITestCase):
                 }
             ],
         )
+
+
+    def test_account_delete_with_retained_consult_request_returns_409(self):
+        self.client.force_authenticate(user=self.requester)
+        self.client.credentials()
+
+        response = self.client.delete(
+            "/auth/account",
+            {"password": "TestPassword123!"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(
+            response.data["code"],
+            "USER_409_RETAINED_DATA_EXISTS",
+        )
+        self.assertTrue(User.objects.filter(id=self.requester.id).exists())
+        self.assertTrue(
+            ConsultRequest.objects.filter(
+                requester_id=self.requester.id
+            ).exists()
+        )
