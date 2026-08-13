@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError, api_settings
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from datetime import timedelta
 
@@ -376,7 +377,20 @@ class AccountDeleteView(APIView):
             user=user
         ).delete()
 
-        user.delete()
+        try:
+            user.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "success": False,
+                    "code": "USER_409_RETAINED_DATA_EXISTS",
+                    "message": (
+                        "보존이 필요한 상담 이력이 있어 계정을 즉시 삭제할 수 없습니다."
+                    ),
+                    "data": None,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         return Response(
             status=status.HTTP_204_NO_CONTENT
