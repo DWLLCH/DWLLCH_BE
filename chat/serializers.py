@@ -1,3 +1,6 @@
+from urllib.parse import urlencode
+
+from django.core import signing
 from django.urls import reverse
 from rest_framework import serializers
 
@@ -33,11 +36,20 @@ class RiskCheckMessageSerializer(serializers.ModelSerializer):
             "chat:message-file",
             kwargs={"message_id": obj.id},
         )
+        token = signing.dumps(
+            {
+                "message_id": obj.id,
+                "user_id": obj.session.user_id,
+            },
+            salt="chat.risk-check.message-file",
+        )
+        signed_path = f"{path}?{urlencode({'token': token})}"
+
         request = self.context.get("request")
         if request:
-            return request.build_absolute_uri(path)
+            return request.build_absolute_uri(signed_path)
 
-        return path
+        return signed_path
 
 
 class RiskCheckSessionSerializer(serializers.ModelSerializer):
