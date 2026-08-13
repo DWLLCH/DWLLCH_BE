@@ -26,6 +26,7 @@ urlpatterns = [
     path("", include("mypage.urls")),
     path("", include("community.urls")),
     path("", include("chat.urls")),
+    path("", include("b2g.urls")),
 ]
 
 if settings.DEBUG:
