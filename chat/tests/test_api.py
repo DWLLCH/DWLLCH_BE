@@ -420,7 +420,7 @@ class RiskCheckAPITestCase(APITestCase):
         self.assertEqual(response["Content-Type"], "image/png")
         self.assertEqual(b"".join(response.streaming_content), image_bytes)
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
-        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("inline", response["Content-Disposition"])
 
     @patch("chat.views.analyze_risk")
     def test_later_low_message_does_not_downgrade_critical_risk(
