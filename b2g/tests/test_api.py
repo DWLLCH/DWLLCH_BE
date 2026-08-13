@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -113,8 +113,13 @@ class B2GDashboardAPITestCase(APITestCase):
             linkage_consented=True,
         )
 
-        now = timezone.now()
-
+        now = timezone.make_aware(
+            datetime.combine(
+                timezone.localdate(),
+                time(hour=12),
+            )
+        )
+        
         ConsultRequest.objects.filter(
             id=self.high_request.id
         ).update(
