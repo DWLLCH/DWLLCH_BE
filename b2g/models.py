@@ -1,4 +1,4 @@
-import uuid, secrets
+import secrets
 
 from django.conf import settings
 from django.db import models
@@ -76,32 +76,6 @@ class OrganizationUserAlias(models.Model):
 
     def __str__(self):
         return self.alias
-
-class RequesterAlias(models.Model):
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.CASCADE,
-        related_name="requester_aliases",
-    )
-    requester = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="requester_aliases",
-    )
-    alias_token = models.UUIDField(default=uuid.uuid4, editable=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["organization", "requester"],
-                name="unique_requester_alias_per_org",
-            )
-        ]
-
-    def __str__(self):
-        return f"청년_{self.alias_token.hex[:8]}"
-
 
 class ConsultRequest(models.Model):
     class UrgencyLevel(models.TextChoices):
