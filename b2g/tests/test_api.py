@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -113,27 +113,27 @@ class B2GDashboardAPITestCase(APITestCase):
             linkage_consented=True,
         )
 
-        fixed_reference = timezone.make_aware(
-            datetime(2026, 8, 13, 14, 0, 0)
-        )
+        now = timezone.now()
 
         ConsultRequest.objects.filter(
             id=self.high_request.id
         ).update(
-            received_at=fixed_reference - timedelta(minutes=60),
-            assigned_at=fixed_reference - timedelta(minutes=30),
+            received_at=now - timedelta(minutes=60),
+            assigned_at=now - timedelta(minutes=30),
         )
 
         ConsultRequest.objects.filter(
             id=self.critical_request.id
         ).update(
-            received_at=fixed_reference - timedelta(minutes=120),
-            assigned_at=fixed_reference - timedelta(minutes=80),
-            resolved_at=fixed_reference,
+            received_at=now - timedelta(minutes=120),
+            assigned_at=now - timedelta(minutes=80),
+            resolved_at=now,
         )
 
         self.client.force_authenticate(user=self.admin_user)
-        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.organization.id))
+        self.client.credentials(
+            HTTP_X_ORGANIZATION_ID=str(self.organization.id)
+        )
 
     def create_user(self, username, email):
         return User.objects.create_user(
@@ -167,7 +167,6 @@ class B2GDashboardAPITestCase(APITestCase):
 
     def test_non_admin_cannot_access_dashboard(self):
         self.client.force_authenticate(user=self.normal_user)
-        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.organization.id))
 
         response = self.client.get("/b2g/dashboard/requests")
 
@@ -348,4 +347,38 @@ class B2GDashboardAPITestCase(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_400_BAD_REQUEST,
+        )
+
+    def test_admin_cannot_access_unassigned_organization(self):
+        self.client.credentials(
+            HTTP_X_ORGANIZATION_ID=str(
+                self.other_organization.id
+            )
+        )
+
+        response = self.client.get(
+            "/b2g/dashboard/requests"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            response.data["code"],
+            "AUTH_403_FORBIDDEN",
+        )
+
+    def test_organization_header_is_required(self):
+        self.client.credentials()
+
+        response = self.client.get("/b2g/dashboard/requests")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            response.data["code"],
+            "AUTH_403_FORBIDDEN",
         )
