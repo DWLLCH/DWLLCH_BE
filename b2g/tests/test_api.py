@@ -387,3 +387,18 @@ class B2GDashboardAPITestCase(APITestCase):
             response.data["code"],
             "AUTH_403_FORBIDDEN",
         )
+
+    def test_my_organizations_returns_admin_memberships(self):
+        response = self.client.get("/b2g/organizations/me")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["data"]["organizations"],
+            [
+                {
+                    "organizationId": self.organization.id,
+                    "name": self.organization.name,
+                    "licenseActive": True,
+                }
+            ],
+        )
