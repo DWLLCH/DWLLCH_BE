@@ -21,13 +21,42 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from b2g.exceptions import InvalidDashboardParameter, LicenseRequired
-from b2g.models import ConsultRequest
+from b2g.models import ConsultRequest, OrganizationMembership
 from b2g.permissions import IsOrganizationAdmin
 from b2g.serializers import (
     ConsultRequestDetailSerializer,
     ConsultRequestListSerializer,
 )
 from common.responses import success_response
+
+class MyOrganizationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        memberships = (
+            OrganizationMembership.objects
+            .select_related("organization")
+            .filter(
+                user=request.user,
+                is_admin=True,
+                is_active=True,
+            )
+            .order_by("organization__name", "organization_id")
+        )
+
+        return success_response(
+            data={
+                "organizations": [
+                    {
+                        "organizationId": membership.organization_id,
+                        "name": membership.organization.name,
+                        "licenseActive": membership.organization.license_active,
+                    }
+                    for membership in memberships
+                ]
+            }
+        )
+
 
 class DashboardBaseView(APIView):
     permission_classes = [IsAuthenticated, IsOrganizationAdmin]
