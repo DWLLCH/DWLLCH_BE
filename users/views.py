@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError, api_settings
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate
+from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from datetime import timedelta
@@ -373,12 +374,12 @@ class AccountDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        RefreshTokenModel.objects.filter(
-            user=user
-        ).delete()
-
         try:
-            user.delete()
+            with transaction.atomic():
+                RefreshTokenModel.objects.filter(
+                    user=user
+                ).delete()
+                user.delete()
         except ProtectedError:
             return Response(
                 {
