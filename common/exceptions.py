@@ -11,6 +11,9 @@ def custom_exception_handler(exc, context):
     custom_code = getattr(exc, "api_code", None)
 
     if custom_code:
+        code = custom_code
+        message = str(exc.detail)
+
         if isinstance(response.data, dict):
             detail = response.data.get("detail", str(exc))
         else:
@@ -22,8 +25,7 @@ def custom_exception_handler(exc, context):
             "data": None,
         }
         return response
-
-    if status_code == 401:
+    elif status_code == 401:
         code = "AUTH_401_UNAUTHORIZED"
         message = "인증이 필요합니다."
 
@@ -38,7 +40,7 @@ def custom_exception_handler(exc, context):
     elif status_code == 400:
         code = "COMMON_400_INVALID_INPUT"
         message = "요청 값이 올바르지 않습니다."
-
+        
     else:
         code = "COMMON_500_SERVER_ERROR"
         message = "서버 내부 오류가 발생했습니다."

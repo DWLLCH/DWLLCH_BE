@@ -1,11 +1,11 @@
-from b2g.exceptions import (
-    B2GLicenseRequiredException,
-    B2GPermissionDeniedException,
-)
+from rest_framework.permissions import BasePermission
+
 from b2g.models import OrganizationMembership
 
 
-class IsOrganizationAdmin:
+class IsOrganizationAdmin(BasePermission):
+    message = "전담기관 관리자 권한이 필요합니다."
+
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
@@ -22,11 +22,7 @@ class IsOrganizationAdmin:
         )
 
         if membership is None:
-            raise B2GPermissionDeniedException()
+            return False
 
-        if not membership.organization.license_active:
-            raise B2GLicenseRequiredException()
-
-        request.organization_membership = membership
         request.organization = membership.organization
         return True

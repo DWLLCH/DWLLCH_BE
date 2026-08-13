@@ -1,159 +1,113 @@
 import math
 from datetime import timedelta
 
-from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from rest_framework import serializers
-from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from b2g.exceptions import InvalidDashboardParameter, LicenseRequired
 from b2g.models import ConsultRequest
 from b2g.permissions import IsOrganizationAdmin
 from b2g.serializers import (
     ConsultRequestDetailSerializer,
     ConsultRequestListSerializer,
 )
-from common.responses import success_response
 
 
-URGENCY_ORDER = {
-    "CRITICAL": 0,
-    "HIGH": 1,
-    "MEDIUM": 2,
-    "LOW": 3,
-}
+def success_response(data, message="요청이 정상 처리되었습니다.", status_code=200):
+    return Response(
+        {
+            "success": True,
+            "code": "SUCCESS",
+            "message": message,
+            "data": data,
+        },
+        status=status_code,
+    )
 
 
 class DashboardBaseView(APIView):
-    permission_classes = [
-        IsAuthenticated,
-        IsOrganizationAdmin,
-    ]
+    permission_classes = [IsAuthenticated, IsOrganizationAdmin]
 
-    def get_queryset(self, request):
-        return ConsultRequest.objects.filter(
-            organization=request.organization,
-            linkage_consented=True,
-        )
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+
+        if not request.organization.license_active:
+            raise LicenseRequired()
 
 
 class ConsultRequestListView(DashboardBaseView):
     def get(self, request):
-        queryset = self.get_queryset(request)
+        queryset = (
+            ConsultRequest.objects
+            .filter(
+                organization=request.organization,
+                linkage_consented=True,
+            )
+            .select_related("requester")
+        )
 
         urgency_level = request.query_params.get("urgencyLevel")
         request_status = request.query_params.get("status")
 
         if urgency_level:
-            if urgency_level not in ConsultRequest.UrgencyLevel.values:
-                raise serializers.ValidationError(
-                    {"urgencyLevel": "올바르지 않은 시급성입니다."}
+            valid_urgencies = {
+                choice[0] for choice in ConsultRequest.UrgencyLevel.choices
+            }
+
+            if urgency_level not in valid_urgencies:
+                raise InvalidDashboardParameter(
+                    "urgencyLevel 값이 올바르지 않습니다."
                 )
-            queryset = queryset.filter(
-                urgency_level=urgency_level
-            )
+
+            queryset = queryset.filter(urgency_level=urgency_level)
 
         if request_status:
-            if request_status not in ConsultRequest.Status.values:
-                raise serializers.ValidationError(
-                    {"status": "올바르지 않은 상태입니다."}
+            valid_statuses = {
+                choice[0] for choice in ConsultRequest.Status.choices
+            }
+
+            if request_status not in valid_statuses:
+                raise InvalidDashboardParameter(
+                    "status 값이 올바르지 않습니다."
                 )
+
             queryset = queryset.filter(status=request_status)
 
         try:
             page = int(request.query_params.get("page", 0))
             size = int(request.query_params.get("size", 20))
-        except ValueError:
-            raise serializers.ValidationError(
-                {"pagination": "page와 size는 숫자여야 합니다."}
+        except (TypeError, ValueError):
+            raise InvalidDashboardParameter(
+                "page와 size는 정수여야 합니다."
             )
 
         if page < 0 or size < 1 or size > 100:
-            raise serializers.ValidationError(
-                {
-                    "pagination": (
-                        "page는 0 이상, size는 1~100이어야 합니다."
-                    )
-                }
+            raise InvalidDashboardParameter(
+                "page는 0 이상, size는 1 이상 100 이하여야 합니다."
             )
 
-        sort = request.query_params.get(
-            "sort",
-            "urgencyLevel,desc",
-        )
-
-        urgency_case = {
-            "CRITICAL": 4,
-            "HIGH": 3,
-            "MEDIUM": 2,
-            "LOW": 1,
-        }
-
-        from django.db.models import Case, IntegerField, Value, When
-
-        queryset = queryset.annotate(
-            urgency_order=Case(
-                *[
-                    When(
-                        urgency_level=level,
-                        then=Value(order),
-                    )
-                    for level, order in urgency_case.items()
-                ],
-                default=Value(0),
-                output_field=IntegerField(),
-            )
-        )
-
-        allowed_sorts = {
-            "urgencyLevel,desc": (
-                "-urgency_order",
-                "-received_at",
-                "-id",
-            ),
-            "urgencyLevel,asc": (
-                "urgency_order",
-                "-received_at",
-                "-id",
-            ),
-            "receivedAt,desc": (
-                "-received_at",
-                "-id",
-            ),
-            "receivedAt,asc": (
-                "received_at",
-                "id",
-            ),
-        }
-
-        if sort not in allowed_sorts:
-            raise serializers.ValidationError(
-                {"sort": "지원하지 않는 정렬 조건입니다."}
-            )
-
-        queryset = queryset.order_by(*allowed_sorts[sort])
+        sort = request.query_params.get("sort", "urgencyLevel,desc")
+        queryset = self._apply_sort(queryset, sort)
 
         total_elements = queryset.count()
-        total_pages = (
-            math.ceil(total_elements / size)
-            if total_elements
-            else 0
-        )
+        total_pages = math.ceil(total_elements / size) if total_elements else 0
 
         start = page * size
         end = start + size
-        items = queryset[start:end]
+        page_queryset = queryset[start:end]
 
         serializer = ConsultRequestListSerializer(
-            items,
+            page_queryset,
             many=True,
         )
 
         return success_response(
-            data={
+            {
                 "content": serializer.data,
                 "page": page,
                 "size": size,
@@ -163,79 +117,109 @@ class ConsultRequestListView(DashboardBaseView):
             }
         )
 
+    def _apply_sort(self, queryset, sort):
+        try:
+            field_name, direction = sort.split(",", maxsplit=1)
+        except ValueError:
+            raise InvalidDashboardParameter(
+                "sort는 '필드,asc' 또는 '필드,desc' 형식이어야 합니다."
+            )
+
+        if direction not in {"asc", "desc"}:
+            raise InvalidDashboardParameter(
+                "정렬 방향은 asc 또는 desc만 사용할 수 있습니다."
+            )
+
+        field_map = {
+            "urgencyLevel": "urgency_rank",
+            "receivedAt": "received_at",
+            "status": "status",
+        }
+
+        if field_name not in field_map:
+            raise InvalidDashboardParameter(
+                "지원하지 않는 정렬 필드입니다."
+            )
+
+        if field_name == "urgencyLevel":
+            from django.db.models import Case, IntegerField, Value, When
+
+            queryset = queryset.annotate(
+                urgency_rank=Case(
+                    When(
+                        urgency_level=ConsultRequest.UrgencyLevel.CRITICAL,
+                        then=Value(4),
+                    ),
+                    When(
+                        urgency_level=ConsultRequest.UrgencyLevel.HIGH,
+                        then=Value(3),
+                    ),
+                    When(
+                        urgency_level=ConsultRequest.UrgencyLevel.MEDIUM,
+                        then=Value(2),
+                    ),
+                    When(
+                        urgency_level=ConsultRequest.UrgencyLevel.LOW,
+                        then=Value(1),
+                    ),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+
+        database_field = field_map[field_name]
+
+        if direction == "desc":
+            database_field = f"-{database_field}"
+
+        return queryset.order_by(database_field, "-received_at")
+
 
 class ConsultRequestDetailView(DashboardBaseView):
     def get(self, request, request_id):
-        consult_request = get_object_or_404(
-            self.get_queryset(request),
-            id=request_id,
+        consult_request = (
+            ConsultRequest.objects
+            .filter(
+                id=request_id,
+                organization=request.organization,
+                linkage_consented=True,
+            )
+            .select_related("requester")
+            .first()
         )
 
-        serializer = ConsultRequestDetailSerializer(
-            consult_request
-        )
-        return success_response(data=serializer.data)
+        if consult_request is None:
+            return Response(
+                {
+                    "success": False,
+                    "code": "COMMON_404_NOT_FOUND",
+                    "message": "상담요청을 찾을 수 없습니다.",
+                    "data": None,
+                },
+                status=404,
+            )
+
+        serializer = ConsultRequestDetailSerializer(consult_request)
+        return success_response(serializer.data)
 
 
 class DashboardStatsView(DashboardBaseView):
-    GROUP_BY_FUNCTIONS = {
+    GROUP_FUNCTIONS = {
         "DAY": TruncDay,
         "WEEK": TruncWeek,
         "MONTH": TruncMonth,
     }
 
     def get(self, request):
-        queryset = self.get_queryset(request)
+        from_date, to_date, group_by = self._validate_parameters(request)
 
-        today = timezone.localdate()
-        default_from = today.replace(day=1)
-
-        from_date = parse_date(
-            request.query_params.get(
-                "from",
-                default_from.isoformat(),
-            )
-        )
-        to_date = parse_date(
-            request.query_params.get(
-                "to",
-                today.isoformat(),
-            )
-        )
-        group_by = request.query_params.get("groupBy", "DAY")
-
-        if from_date is None or to_date is None:
-            raise serializers.ValidationError(
-                {"period": "날짜 형식은 YYYY-MM-DD여야 합니다."}
-            )
-
-        if from_date > to_date:
-            raise serializers.ValidationError(
-                {"period": "조회 시작일은 종료일보다 늦을 수 없습니다."}
-            )
-
-        if group_by not in self.GROUP_BY_FUNCTIONS:
-            raise serializers.ValidationError(
-                {"groupBy": "DAY, WEEK, MONTH 중 하나여야 합니다."}
-            )
-
-        queryset = queryset.filter(
+        queryset = ConsultRequest.objects.filter(
+            organization=request.organization,
+            linkage_consented=True,
             received_at__date__gte=from_date,
             received_at__date__lte=to_date,
         )
 
-        resolved_statuses = [
-            ConsultRequest.Status.RESOLVED,
-            ConsultRequest.Status.CLOSED,
-        ]
-
-        response_duration = ExpressionWrapper(
-            F("assigned_at") - F("received_at"),
-            output_field=DurationField(),
-        )
-
-
-        # SQLite를 포함한 DB 호환성을 위해 조건 집계는 별도 count 사용
         total_requests = queryset.count()
         critical_requests = queryset.filter(
             urgency_level=ConsultRequest.UrgencyLevel.CRITICAL
@@ -244,19 +228,29 @@ class DashboardStatsView(DashboardBaseView):
             urgency_level=ConsultRequest.UrgencyLevel.HIGH
         ).count()
         resolved_requests = queryset.filter(
-            status__in=resolved_statuses
+            status__in=[
+                ConsultRequest.Status.RESOLVED,
+                ConsultRequest.Status.CLOSED,
+            ]
         ).count()
+
+        response_duration = ExpressionWrapper(
+            F("first_responded_at") - F("received_at"),
+            output_field=DurationField(),
+        )
 
         average_duration = (
             queryset
-            .exclude(assigned_at=None)
-            .aggregate(value=Avg(response_duration))["value"]
+            .filter(first_responded_at__isnull=False)
+            .aggregate(average=Avg(response_duration))
+            .get("average")
         )
-        average_minutes = (
-            round(average_duration.total_seconds() / 60)
-            if average_duration
-            else 0
-        )
+
+        average_response_minutes = None
+        if average_duration is not None:
+            average_response_minutes = round(
+                average_duration.total_seconds() / 60
+            )
 
         by_risk_type = list(
             queryset
@@ -272,40 +266,37 @@ class DashboardStatsView(DashboardBaseView):
             .order_by("-count", "urgency_level")
         )
 
-        trunc_function = self.GROUP_BY_FUNCTIONS[group_by]
+        trunc_function = self.GROUP_FUNCTIONS[group_by]
 
         trend_rows = (
             queryset
-            .annotate(period=trunc_function("received_at"))
-            .values("period")
+            .annotate(period_date=trunc_function("received_at"))
+            .values("period_date")
             .annotate(
-                request_count=Count("id"),
+                resolved_count=Count(
+                    "id",
+                    filter=Q(
+                        status__in=[
+                            ConsultRequest.Status.RESOLVED,
+                            ConsultRequest.Status.CLOSED,
+                        ]
+                    ),
+                ),
             )
-            .order_by("period")
+            .order_by("period_date")
         )
 
-        trend = []
-
-        for row in trend_rows:
-            period = row["period"]
-            next_period = self.get_next_period(period, group_by)
-
-            resolved_count = queryset.filter(
-                resolved_at__gte=period,
-                resolved_at__lt=next_period,
-                status__in=resolved_statuses,
-            ).count()
-
-            trend.append(
-                {
-                    "date": period.date(),
-                    "requestCount": row["request_count"],
-                    "resolvedCount": resolved_count,
-                }
-            )
+        trend = [
+            {
+                "date": row["period_date"].date(),
+                "requestCount": row["request_count"],
+                "resolvedCount": row["resolved_count"],
+            }
+            for row in trend_rows
+        ]
 
         return success_response(
-            data={
+            {
                 "period": {
                     "from": from_date,
                     "to": to_date,
@@ -315,7 +306,7 @@ class DashboardStatsView(DashboardBaseView):
                     "criticalRequests": critical_requests,
                     "highRequests": high_requests,
                     "resolvedRequests": resolved_requests,
-                    "averageResponseMinutes": average_minutes,
+                    "averageResponseMinutes": average_response_minutes,
                 },
                 "byRiskType": [
                     {
@@ -335,17 +326,30 @@ class DashboardStatsView(DashboardBaseView):
             }
         )
 
-    def get_next_period(self, period, group_by):
-        if group_by == "DAY":
-            return period + timedelta(days=1)
+    def _validate_parameters(self, request):
+        today = timezone.localdate()
+        default_from = today - timedelta(days=30)
 
-        if group_by == "WEEK":
-            return period + timedelta(days=7)
+        from_value = request.query_params.get("from")
+        to_value = request.query_params.get("to")
+        group_by = request.query_params.get("groupBy", "DAY")
 
-        if period.month == 12:
-            return period.replace(
-                year=period.year + 1,
-                month=1,
+        from_date = parse_date(from_value) if from_value else default_from
+        to_date = parse_date(to_value) if to_value else today
+
+        if from_date is None or to_date is None:
+            raise InvalidDashboardParameter(
+                "날짜는 YYYY-MM-DD 형식이어야 합니다."
             )
 
-        return period.replace(month=period.month + 1)
+        if from_date > to_date:
+            raise InvalidDashboardParameter(
+                "조회 시작일은 종료일보다 늦을 수 없습니다."
+            )
+
+        if group_by not in self.GROUP_FUNCTIONS:
+            raise InvalidDashboardParameter(
+                "groupBy는 DAY, WEEK, MONTH 중 하나여야 합니다."
+            )
+
+        return from_date, to_date, group_by
