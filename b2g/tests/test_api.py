@@ -5,6 +5,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from users.models import RefreshToken
+
 from b2g.models import (
     ConsultRequest,
     Organization,
@@ -405,6 +407,11 @@ class B2GDashboardAPITestCase(APITestCase):
 
 
     def test_account_delete_with_retained_consult_request_returns_409(self):
+        stored_token = RefreshToken.objects.create(
+            user=self.requester,
+            token="stored-refresh-token",
+            expires_at=timezone.now() + timedelta(days=1),
+        )
         self.client.force_authenticate(user=self.requester)
         self.client.credentials()
 
@@ -424,4 +431,7 @@ class B2GDashboardAPITestCase(APITestCase):
             ConsultRequest.objects.filter(
                 requester_id=self.requester.id
             ).exists()
+        )
+        self.assertTrue(
+            RefreshToken.objects.filter(id=stored_token.id).exists()
         )
