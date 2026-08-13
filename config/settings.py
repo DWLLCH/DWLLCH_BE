@@ -13,6 +13,7 @@ import os
 
 from pathlib import Path
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 from datetime import timedelta
 
 
@@ -44,6 +45,11 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "x-organization-id",
+)
 
 # Application definition
 
