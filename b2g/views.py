@@ -1,7 +1,14 @@
 import math
 from datetime import timedelta
 
-from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
+from django.db.models import (
+    Avg,
+    Count,
+    DurationField,
+    ExpressionWrapper,
+    F,
+    Q,
+)
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -16,19 +23,7 @@ from b2g.serializers import (
     ConsultRequestDetailSerializer,
     ConsultRequestListSerializer,
 )
-
-
-def success_response(data, message="요청이 정상 처리되었습니다.", status_code=200):
-    return Response(
-        {
-            "success": True,
-            "code": "SUCCESS",
-            "message": message,
-            "data": data,
-        },
-        status=status_code,
-    )
-
+from common.responses import success_response
 
 class DashboardBaseView(APIView):
     permission_classes = [IsAuthenticated, IsOrganizationAdmin]
@@ -235,13 +230,13 @@ class DashboardStatsView(DashboardBaseView):
         ).count()
 
         response_duration = ExpressionWrapper(
-            F("first_responded_at") - F("received_at"),
+            F("assigned_at") - F("received_at"),
             output_field=DurationField(),
         )
 
         average_duration = (
             queryset
-            .filter(first_responded_at__isnull=False)
+            .filter(assigned_at__isnull=False)
             .aggregate(average=Avg(response_duration))
             .get("average")
         )
@@ -273,6 +268,7 @@ class DashboardStatsView(DashboardBaseView):
             .annotate(period_date=trunc_function("received_at"))
             .values("period_date")
             .annotate(
+                request_count=Count("id"),
                 resolved_count=Count(
                     "id",
                     filter=Q(
