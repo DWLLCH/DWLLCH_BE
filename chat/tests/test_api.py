@@ -2,6 +2,7 @@ import base64
 import tempfile
 from datetime import date
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -338,7 +339,61 @@ class RiskCheckAPITestCase(APITestCase):
             f"/chat/risk-check/messages/{message.id}/file"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_signed_file_url_can_be_rendered_without_auth_header(self):
+        session = self.create_session()
+        image_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        image = SimpleUploadedFile(
+            "contract.png",
+            image_bytes,
+            content_type="image/png",
+        )
+        RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.USER,
+            type=RiskCheckMessage.MessageType.IMAGE,
+            file=image,
+        )
+
+        detail_response = self.client.get(
+            f"/chat/risk-check/sessions/{session.id}"
+        )
+        file_url = detail_response.data["data"]["messages"][0]["file_url"]
+        parsed_url = urlsplit(file_url)
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            f"{parsed_url.path}?{parsed_url.query}"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(b"".join(response.streaming_content), image_bytes)
+
+    def test_tampered_file_token_is_rejected(self):
+        session = self.create_session()
+        image = SimpleUploadedFile(
+            "contract.png",
+            base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            ),
+            content_type="image/png",
+        )
+        message = RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.USER,
+            type=RiskCheckMessage.MessageType.IMAGE,
+            file=image,
+        )
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            f"/chat/risk-check/messages/{message.id}/file?token=tampered"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_session_owner_can_download_uploaded_file(self):
         session = self.create_session()
