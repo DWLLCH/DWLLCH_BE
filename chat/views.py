@@ -2,12 +2,15 @@ import logging
 import mimetypes
 import os
 
+from django.core import signing
+from django.core.signing import BadSignature, SignatureExpired
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -368,15 +371,42 @@ class RiskCheckConnectView(APIView):
 
 
 class RiskCheckMessageFileView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    file_token_salt = "chat.risk-check.message-file"
+    file_token_max_age = 300
 
     def get(self, request, message_id):
         message = get_object_or_404(
             RiskCheckMessage.objects.exclude(file=""),
             id=message_id,
-            session__user=request.user,
             file__isnull=False,
         )
+
+        is_owner = (
+            request.user.is_authenticated
+            and message.session.user_id == request.user.id
+        )
+
+        if not is_owner:
+            token = request.query_params.get("token")
+            try:
+                payload = signing.loads(
+                    token or "",
+                    salt=self.file_token_salt,
+                    max_age=self.file_token_max_age,
+                )
+            except (BadSignature, SignatureExpired) as exc:
+                raise PermissionDenied(
+                    "이미지 조회 권한이 없거나 링크가 만료되었습니다."
+                ) from exc
+
+            if (
+                payload.get("message_id") != message.id
+                or payload.get("user_id") != message.session.user_id
+            ):
+                raise PermissionDenied(
+                    "이미지 조회 권한이 없습니다."
+                )
 
         content_type, _ = mimetypes.guess_type(message.file.name)
 
