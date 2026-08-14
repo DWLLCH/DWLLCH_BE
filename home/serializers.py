@@ -19,8 +19,6 @@ class PolicyListSerializer(serializers.ModelSerializer):
 
 
 class PolicyDetailSerializer(serializers.ModelSerializer):
-    """상세 조회용 — 전체 필드"""
-
     class Meta:
         model = Policy
         fields = [
@@ -28,14 +26,17 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "title",
             "summary",
             "content",
+            "eligibility",
+            "application_method",
+            "required_documents",
             "category",
-            "target_condition",
             "organization",
             "application_start",
             "application_end",
             "created_at",
             "updated_at",
         ]
+
 class HomeGuestSerializer(serializers.Serializer):
     banner_message = serializers.CharField()
     popular_policies = PolicyListSerializer(many=True)
@@ -47,3 +48,8 @@ class PolicyChatbotQuerySerializer(serializers.Serializer):
 
 class PolicyChatbotResponseSerializer(serializers.Serializer):
     answer = serializers.CharField()
+
+class SimilarPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Policy
+        fields = ["id", "title", "summary", "category", "organization"]

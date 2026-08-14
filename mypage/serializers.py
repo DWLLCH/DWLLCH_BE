@@ -23,10 +23,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             "sido",
             "sigungu",
             "detail_address",
+            "protection_type",
             "housing_type",
+            "housing_situation",
+            "living_status",
             "income_type",
-            "employment_type",
-            "education_status",
+            "support_received",
+            "needed_help",
         ]
 
 class ApplicationSerializer(serializers.ModelSerializer):
@@ -50,12 +53,12 @@ class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
         fields = ["status"]
-
+        
 class ChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChecklistItem
-        fields = ["id", "content", "is_done", "order"]
-        read_only_fields = ["id", "content", "order"]
+        fields = ["id", "content", "is_done", "order", "issue_guide_text", "issue_guide_url"]
+        read_only_fields = ["id", "content", "order", "issue_guide_text", "issue_guide_url"]
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
