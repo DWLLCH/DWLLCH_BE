@@ -49,10 +49,13 @@ def home_guest(request):
     popular_policies = Policy.objects.all().order_by("-created_at")[:5]
 
     data = {
-        "banner_message": "자립준비청년을 위한 정책 정보를 한눈에 확인하세요.",
-        "popular_policies": PolicyListSerializer(popular_policies, many=True).data,
+        "bannerMessage": "자립준비청년을 위한 정책 정보를 한눈에 확인하세요.",
+        "popularPolicies": PolicyListSerializer(popular_policies, many=True).data,
     }
-    return Response(data, status=status.HTTP_200_OK)
+    return success_response(
+        data=data,
+        message="비로그인 홈 데이터를 조회했습니다.",
+    )
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -73,14 +76,17 @@ def home_curation(request):
     policies = Policy.objects.filter(query).order_by("-created_at")[:10]
 
     data = {
-        "user_summary": {
+        "userSummary": {
             "sido": user.sido,
             "sigungu": user.sigungu,
-            "protection_end_date": user.protection_end_date,
+            "protectionEndDate": user.protection_end_date,
         },
-        "curated_policies": PolicyListSerializer(policies, many=True).data,
+        "curatedPolicies": PolicyListSerializer(policies, many=True).data,
     }
-    return Response(data, status=status.HTTP_200_OK)
+    return success_response(
+        data=data,
+        message="맞춤 정책을 조회했습니다.",
+    )
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
