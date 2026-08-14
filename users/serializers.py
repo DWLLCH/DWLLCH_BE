@@ -35,21 +35,33 @@ class SignupSerializer(serializers.ModelSerializer):
         source="protection_end_date",
     )
 
+    protectionType = serializers.ChoiceField(
+        source="protection_type",
+        choices=User.ProtectionType.choices,
+    )
     housingType = serializers.ChoiceField(
         source="housing_type",
         choices=User.HousingType.choices,
+    )
+    housingSituation = serializers.ChoiceField(
+        source="housing_situation",
+        choices=User.HousingSituation.choices,
+    )
+    livingStatus = serializers.ListField(
+        source="living_status",
+        child=serializers.ChoiceField(choices=User.LivingStatus.choices),
     )
     incomeType = serializers.ChoiceField(
         source="income_type",
         choices=User.IncomeType.choices,
     )
-    employmentType = serializers.ChoiceField(
-        source="employment_type",
-        choices=User.EmploymentType.choices,
+    supportReceived = serializers.ListField(
+        source="support_received",
+        child=serializers.ChoiceField(choices=User.SupportType.choices),
     )
-    educationStatus = serializers.ChoiceField(
-        source="education_status",
-        choices=User.EducationStatus.choices,
+    neededHelp = serializers.ListField(
+        source="needed_help",
+        child=serializers.ChoiceField(choices=User.NeededHelp.choices),
     )
 
     class Meta:
@@ -62,10 +74,13 @@ class SignupSerializer(serializers.ModelSerializer):
             "birthDate",
             "region",
             "protectionEndDate",
+            "protectionType",
             "housingType",
+            "housingSituation",
+            "livingStatus",
             "incomeType",
-            "employmentType",
-            "educationStatus",
+            "supportReceived",
+            "neededHelp",
         ]
 
     def validate_email(self, value):
@@ -80,6 +95,11 @@ class SignupSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "이미 사용 중인 아이디입니다."
             )
+        return value
+
+    def validate_neededHelp(self, value):
+        if len(value) > 3:
+            raise serializers.ValidationError("최대 3개까지 선택할 수 있습니다.")
         return value
 
     def validate(self, attrs):
@@ -109,10 +129,13 @@ class SignupSerializer(serializers.ModelSerializer):
             sido=region["sido"],
             sigungu=region["sigungu"],
             detail_address=region.get("detail_address"),
+            protection_type=validated_data["protection_type"],
             housing_type=validated_data["housing_type"],
+            housing_situation=validated_data["housing_situation"],
+            living_status=validated_data["living_status"],
             income_type=validated_data["income_type"],
-            employment_type=validated_data["employment_type"],
-            education_status=validated_data["education_status"],
+            support_received=validated_data["support_received"],
+            needed_help=validated_data["needed_help"],
         )
 
         user.set_password(password)
@@ -161,3 +184,5 @@ class AccountDeleteSerializer(serializers.Serializer):
         required=False,
         allow_blank=True,
     )
+
+
