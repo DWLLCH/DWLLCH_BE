@@ -100,3 +100,18 @@ def policy_chatbot_query(request):
         )
 
     return Response({"answer": answer}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def policy_similar(request, policy_id):
+    policy = get_object_or_404(Policy, id=policy_id)
+
+    similar_policies = (
+        Policy.objects.filter(category=policy.category)
+        .exclude(id=policy.id)
+        .order_by("-created_at")[:5]
+    )
+
+    serializer = SimilarPolicySerializer(similar_policies, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)

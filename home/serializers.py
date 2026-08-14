@@ -36,7 +36,7 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        
+
 class HomeGuestSerializer(serializers.Serializer):
     banner_message = serializers.CharField()
     popular_policies = PolicyListSerializer(many=True)
@@ -48,3 +48,8 @@ class PolicyChatbotQuerySerializer(serializers.Serializer):
 
 class PolicyChatbotResponseSerializer(serializers.Serializer):
     answer = serializers.CharField()
+
+class SimilarPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Policy
+        fields = ["id", "title", "summary", "category", "organization"]
