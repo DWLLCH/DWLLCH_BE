@@ -5,6 +5,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from common.responses import success_response
+from common.pagination import CommonPageNumberPagination
+
 from .models import Policy
 from .serializers import PolicyListSerializer, PolicyDetailSerializer
 
@@ -24,23 +27,21 @@ def policy_list(request):
     if keyword:
         queryset = queryset.filter(title__icontains=keyword)
 
-    serializer = PolicyListSerializer(queryset, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    paginator = CommonPageNumberPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = PolicyListSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_detail(request, policy_id):
-    try:
-        policy = Policy.objects.get(id=policy_id)
-    except Policy.DoesNotExist:
-        return Response(
-            {"detail": "정책을 찾을 수 없습니다."},
-            status=status.HTTP_404_NOT_FOUND,
-        )
-
+    policy = get_object_or_404(Policy, id=policy_id)
     serializer = PolicyDetailSerializer(policy)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return success_response(
+        data=serializer.data,
+        message="정책 상세 정보를 조회했습니다.",
+    )
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
