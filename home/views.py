@@ -1,16 +1,14 @@
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Policy
 from .serializers import PolicyListSerializer, PolicyDetailSerializer
 
-from django.db.models import Q
-from rest_framework.permissions import AllowAny, IsAuthenticated
-
-from .serializers import PolicyChatbotQuerySerializer
-from .services import get_policy_chatbot_answer
+User = get_user_model()
 
 
 @api_view(["GET"])
@@ -61,11 +59,11 @@ def home_curation(request):
     user = request.user
 
     keywords = [
-        user.get_housing_type_display(),
-        user.get_income_type_display(),
-        user.get_employment_type_display(),
-        user.get_education_status_display(),
+        User.LivingStatus(code).label for code in user.living_status
+    ] + [
+        User.NeededHelp(code).label for code in user.needed_help
     ]
+    keywords.append(user.get_housing_type_display())
 
     query = Q()
     for keyword in keywords:

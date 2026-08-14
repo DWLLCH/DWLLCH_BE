@@ -23,10 +23,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             "sido",
             "sigungu",
             "detail_address",
+            "protection_type",
             "housing_type",
+            "housing_situation",
+            "living_status",
             "income_type",
-            "employment_type",
-            "education_status",
+            "support_received",
+            "needed_help",
         ]
 
 class ApplicationSerializer(serializers.ModelSerializer):
