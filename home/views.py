@@ -88,27 +88,6 @@ def home_curation(request):
         message="맞춤 정책을 조회했습니다.",
     )
 
-@api_view(["POST"])
-@permission_classes([AllowAny])
-def policy_chatbot_query(request):
-    serializer = PolicyChatbotQuerySerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        answer = get_policy_chatbot_answer(
-            question=serializer.validated_data["question"],
-            policy_id=serializer.validated_data.get("policy_id"),
-        )
-    except Exception:
-        return Response(
-            {"detail": "챗봇 응답 생성 중 오류가 발생했습니다."},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-    return Response({"answer": answer}, status=status.HTTP_200_OK)
-
-
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_similar(request, policy_id):
@@ -120,5 +99,27 @@ def policy_similar(request, policy_id):
         .order_by("-created_at")[:5]
     )
 
-    serializer = SimilarPolicySerializer(similar_policies, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    data = {
+        "similarPolicies": SimilarPolicySerializer(similar_policies, many=True).data,
+    }
+    return success_response(
+        data=data,
+        message="비슷한 정책 사례를 조회했습니다.",
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def policy_chatbot_query(request):
+    serializer = PolicyChatbotQuerySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    answer = get_policy_chatbot_answer(
+        question=serializer.validated_data["question"],
+        policy_id=serializer.validated_data.get("policy_id"),
+    )
+
+    return success_response(
+        data={"answer": answer},
+        message="정책 관련 질문에 답변했습니다.",
+    )
