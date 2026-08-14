@@ -16,46 +16,71 @@ class User(AbstractUser):
         null=True,
     )
 
+    class ProtectionType(models.TextChoices):
+        RESIDENTIAL_CARE = "RESIDENTIAL_CARE", "아동양육시설"
+        GROUP_HOME = "GROUP_HOME", "공동생활가정"
+        FOSTER_CARE = "FOSTER_CARE", "가정위탁"
+        ETC = "ETC", "기타"
+        UNKNOWN = "UNKNOWN", "잘 모르겠어요"
+
     class HousingType(models.TextChoices):
         MONTHLY_RENT = "MONTHLY_RENT", "월세"
         JEONSE = "JEONSE", "전세"
         OWNED = "OWNED", "자가"
-        FREE = "FREE", "무상거주"
+        FREE = "FREE", "무상 거주"
+        FACILITY = "FACILITY", "시설·그룹홈 등"
+
+    class HousingSituation(models.TextChoices):
+        STABLE = "STABLE", "안정적으로 거주하고 있어요"
+        MOVING = "MOVING", "이사할 집을 찾고 있어요"
+        SEEKING_INDEPENDENCE = "SEEKING_INDEPENDENCE", "독립할 집을 찾고 있어요"
+        BURDEN = "BURDEN", "주거비가 부담스러워요"
+        PREPARING_END = "PREPARING_END", "곧 보호종료라 주거를 준비해야 해요"
+        UNKNOWN = "UNKNOWN", "아직 잘 모르겠어요"
+
+    class LivingStatus(models.TextChoices):
+        SCHOOL = "SCHOOL", "학교에 다니고 있어요"
+        EMPLOYED = "EMPLOYED", "직장에 다니고 있어요"
+        PART_TIME = "PART_TIME", "아르바이트·파트타임으로 일하고 있어요"
+        FREELANCE = "FREELANCE", "프리랜서·플랫폼 노동을 하고 있어요"
+        SELF_EMPLOYED = "SELF_EMPLOYED", "자영업·창업을 하고 있어요"
+        JOB_SEEKING = "JOB_SEEKING", "취업을 준비하고 있어요"
+        NONE = "NONE", "현재 하고 있는 일이 없어요"
 
     class IncomeType(models.TextChoices):
         EARNED = "EARNED", "근로소득"
         BUSINESS = "BUSINESS", "사업소득"
-        OTHER_ASSET = "OTHER_ASSET", "기타재산소득"
-        NONE = "NONE", "소득없음"
+        OTHER_ASSET = "OTHER_ASSET", "기타·재산소득"
+        NONE = "NONE", "현재 소득이 없어요"
 
-    class EmploymentType(models.TextChoices):
-        UNEMPLOYED = "UNEMPLOYED", "미취업"
-        EMPLOYED = "EMPLOYED", "취업"
-        PART_TIME = "PART_TIME", "아르바이트"
-        SELF_EMPLOYED = "SELF_EMPLOYED", "자영업"
+    class SupportType(models.TextChoices):
+        SETTLEMENT_FUND = "SETTLEMENT_FUND", "자립정착금"
+        EMPLOYMENT_SUPPORT = "EMPLOYMENT_SUPPORT", "취업 지원"
+        INDEPENDENCE_ALLOWANCE = "INDEPENDENCE_ALLOWANCE", "자립수당"
+        LIVING_SUPPORT = "LIVING_SUPPORT", "생활비 지원"
+        HOUSING_SUPPORT = "HOUSING_SUPPORT", "주거지원"
+        FINANCIAL_SUPPORT = "FINANCIAL_SUPPORT", "금융 지원"
+        EDUCATION_SUPPORT = "EDUCATION_SUPPORT", "교육·장학 지원"
+        ETC = "ETC", "기타"
+        UNKNOWN = "UNKNOWN", "잘 모르겠어요"
+        NONE = "NONE", "현재 받고 있는 지원이 없어요"
 
-    class EducationStatus(models.TextChoices):
-        ENROLLED = "ENROLLED", "재학"
-        LEAVE_OF_ABSENCE = "LEAVE_OF_ABSENCE", "휴학"
-        GRADUATED = "GRADUATED", "졸업"
-        HIGH_SCHOOL_OR_BELOW = "HIGH_SCHOOL_OR_BELOW", "고등학교 이하"
+    class NeededHelp(models.TextChoices):
+        HOUSING = "HOUSING", "주거"
+        FINANCE = "FINANCE", "금융·생활비"
+        EMPLOYMENT = "EMPLOYMENT", "취업·진로"
+        EDUCATION = "EDUCATION", "교육"
+        POLICY_INFO = "POLICY_INFO", "지원제도"
+        ADMIN_DOCS = "ADMIN_DOCS", "행정·서류"
+        COUNSELING = "COUNSELING", "상담·도움"
 
-    housing_type = models.CharField(
-        max_length=20,
-        choices=HousingType.choices,
-    )
-    income_type = models.CharField(
-        max_length=20,
-        choices=IncomeType.choices,
-    )
-    employment_type = models.CharField(
-        max_length=20,
-        choices=EmploymentType.choices,
-    )
-    education_status = models.CharField(
-        max_length=30,
-        choices=EducationStatus.choices,
-    )
+    protection_type = models.CharField(max_length=20, choices=ProtectionType.choices)
+    housing_type = models.CharField(max_length=20, choices=HousingType.choices)
+    housing_situation = models.CharField(max_length=30, choices=HousingSituation.choices)
+    living_status = models.JSONField(default=list)
+    income_type = models.CharField(max_length=20, choices=IncomeType.choices)
+    support_received = models.JSONField(default=list)
+    needed_help = models.JSONField(default=list)
 
     USERNAME_FIELD = "email"
 
@@ -65,10 +90,10 @@ class User(AbstractUser):
         "protection_end_date",
         "sido",
         "sigungu",
+        "protection_type",
         "housing_type",
+        "housing_situation",
         "income_type",
-        "employment_type",
-        "education_status",
     ]
 
     def __str__(self):
