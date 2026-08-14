@@ -4,7 +4,7 @@ from .models import Policy
 
 
 class PolicyListSerializer(serializers.ModelSerializer):
-    """목록 조회용 — 필요한 필드만 가볍게"""
+    applicationEnd = serializers.DateField(source="application_end")
 
     class Meta:
         model = Policy
@@ -14,11 +14,20 @@ class PolicyListSerializer(serializers.ModelSerializer):
             "summary",
             "category",
             "organization",
-            "application_end",
+            "applicationEnd",
         ]
 
 
 class PolicyDetailSerializer(serializers.ModelSerializer):
+    applicationMethod = serializers.CharField(source="application_method")
+    requiredDocuments = serializers.CharField(source="required_documents")
+    consultPhone = serializers.CharField(source="consult_phone", allow_null=True)
+    consultLink = serializers.URLField(source="consult_link", allow_null=True)
+    applicationStart = serializers.DateField(source="application_start", allow_null=True)
+    applicationEnd = serializers.DateField(source="application_end", allow_null=True)
+    createdAt = serializers.DateTimeField(source="created_at")
+    updatedAt = serializers.DateTimeField(source="updated_at")
+
     class Meta:
         model = Policy
         fields = [
@@ -27,29 +36,25 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "summary",
             "content",
             "eligibility",
-            "application_method",
-            "required_documents",
+            "applicationMethod",
+            "requiredDocuments",
             "category",
             "organization",
-            "application_start",
-            "application_end",
-            "created_at",
-            "updated_at",
+            "consultPhone",
+            "consultLink",
+            "applicationStart",
+            "applicationEnd",
+            "createdAt",
+            "updatedAt",
         ]
 
-class HomeGuestSerializer(serializers.Serializer):
-    banner_message = serializers.CharField()
-    popular_policies = PolicyListSerializer(many=True)
-
-class PolicyChatbotQuerySerializer(serializers.Serializer):
-    question = serializers.CharField(max_length=500)
-    policy_id = serializers.IntegerField(required=False)
-
-
-class PolicyChatbotResponseSerializer(serializers.Serializer):
-    answer = serializers.CharField()
 
 class SimilarPolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = Policy
         fields = ["id", "title", "summary", "category", "organization"]
+
+
+class PolicyChatbotQuerySerializer(serializers.Serializer):
+    question = serializers.CharField(max_length=500)
+    policyId = serializers.IntegerField(source="policy_id", required=False)

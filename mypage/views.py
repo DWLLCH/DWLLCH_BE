@@ -1,23 +1,26 @@
 from datetime import date
 
-from rest_framework import status
+from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 
-from .serializers import MypageStatusSerializer, ProfileSerializer
+from common.responses import success_response
+from common.pagination import CommonPageNumberPagination
 
-from rest_framework.generics import get_object_or_404
+from .models import Application, ChecklistItem, Notification
+from .serializers import (
+    MypageStatusSerializer,
+    ProfileSerializer,
+    ApplicationSerializer,
+    ApplicationStatusUpdateSerializer,
+    ChecklistItemSerializer,
+    NotificationSerializer,
+)
 
-from .models import Application
-from .serializers import ApplicationSerializer, ApplicationStatusUpdateSerializer
-
-from .models import ChecklistItem
-from .serializers import ChecklistItemSerializer
-
-from .models import Notification
-from .serializers import NotificationSerializer
-
+User = get_user_model()
 
 
 @api_view(["GET"])
@@ -26,12 +29,14 @@ def mypage_status(request):
     user = request.user
     d_day = (user.protection_end_date - date.today()).days
 
-    data = {
+    serializer = MypageStatusSerializer({
         "protection_end_date": user.protection_end_date,
         "d_day": d_day,
-    }
-    serializer = MypageStatusSerializer(data)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    })
+    return success_response(
+        data=serializer.data,
+        message="보호종료 상태를 조회했습니다.",
+    )
 
 
 @api_view(["GET", "PATCH"])
@@ -41,27 +46,38 @@ def mypage_profile(request):
 
     if request.method == "GET":
         serializer = ProfileSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return success_response(
+            data=serializer.data,
+            message="프로필 정보를 조회했습니다.",
+        )
 
     serializer = ProfileSerializer(user, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return success_response(
+        data=serializer.data,
+        message="프로필 정보가 수정되었습니다.",
+    )
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def application_list(request):
     if request.method == "GET":
         applications = Application.objects.filter(user=request.user).order_by("-created_at")
-        serializer = ApplicationSerializer(applications, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        paginator = CommonPageNumberPagination()
+        page = paginator.paginate_queryset(applications, request)
+        serializer = ApplicationSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     serializer = ApplicationSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save(user=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.is_valid(raise_exception=True)
+    application = serializer.save(user=request.user)
+    return success_response(
+        data=ApplicationSerializer(application).data,
+        message="신청 항목이 등록되었습니다.",
+        status_code=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["DELETE"])
@@ -76,13 +92,14 @@ def application_delete(request, application_id):
 @permission_classes([IsAuthenticated])
 def application_status_update(request, application_id):
     application = get_object_or_404(Application, id=application_id, user=request.user)
-    serializer = ApplicationStatusUpdateSerializer(
-        application, data=request.data, partial=True
+    serializer = ApplicationStatusUpdateSerializer(application, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return success_response(
+        data=serializer.data,
+        message="신청 상태가 변경되었습니다.",
     )
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -90,7 +107,10 @@ def checklist_list(request, application_id):
     application = get_object_or_404(Application, id=application_id, user=request.user)
     items = application.checklist_items.all()
     serializer = ChecklistItemSerializer(items, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return success_response(
+        data={"items": serializer.data},
+        message="준비항목 체크리스트를 조회했습니다.",
+    )
 
 
 @api_view(["PATCH"])
@@ -100,14 +120,19 @@ def checklist_item_update(request, application_id, item_id):
     item = get_object_or_404(ChecklistItem, id=item_id, application=application)
 
     serializer = ChecklistItemSerializer(item, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return success_response(
+        data=serializer.data,
+        message="체크리스트 항목이 수정되었습니다.",
+    )
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def notification_list(request):
     notifications = Notification.objects.filter(user=request.user)
-    serializer = NotificationSerializer(notifications, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    paginator = CommonPageNumberPagination()
+    page = paginator.paginate_queryset(notifications, request)
+    serializer = NotificationSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)
