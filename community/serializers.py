@@ -4,112 +4,117 @@ from .models import Post, Comment, Report, Scrap
 
 
 class PostListSerializer(serializers.ModelSerializer):
-    author_name = serializers.SerializerMethodField()
-    comment_count = serializers.SerializerMethodField()
+    boardType = serializers.CharField(source="board_type")
+    authorName = serializers.SerializerMethodField()
+    isAnonymous = serializers.BooleanField(source="is_anonymous")
+    viewCount = serializers.IntegerField(source="view_count")
+    commentCount = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at")
 
     class Meta:
         model = Post
         fields = [
             "id",
-            "board_type",
+            "boardType",
             "title",
-            "author_name",
-            "is_anonymous",
-            "view_count",
-            "comment_count",
-            "created_at",
+            "authorName",
+            "isAnonymous",
+            "viewCount",
+            "commentCount",
+            "createdAt",
         ]
 
-    def get_author_name(self, obj):
+    def get_authorName(self, obj):
         return "익명" if obj.is_anonymous else obj.author.username
 
-    def get_comment_count(self, obj):
+    def get_commentCount(self, obj):
         return obj.comments.count()
 
 
 class PostDetailSerializer(serializers.ModelSerializer):
-    author_name = serializers.SerializerMethodField()
-    comment_count = serializers.SerializerMethodField()
-    is_mine = serializers.SerializerMethodField()
+    boardType = serializers.CharField(source="board_type")
+    authorName = serializers.SerializerMethodField()
+    isAnonymous = serializers.BooleanField(source="is_anonymous")
+    allowNotification = serializers.BooleanField(source="allow_notification")
+    viewCount = serializers.IntegerField(source="view_count")
+    commentCount = serializers.SerializerMethodField()
+    isMine = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at")
+    updatedAt = serializers.DateTimeField(source="updated_at")
 
     class Meta:
         model = Post
         fields = [
             "id",
-            "board_type",
+            "boardType",
             "title",
             "content",
-            "author_name",
-            "is_anonymous",
-            "allow_notification",
-            "view_count",
-            "comment_count",
-            "is_mine",
-            "created_at",
-            "updated_at",
+            "authorName",
+            "isAnonymous",
+            "allowNotification",
+            "viewCount",
+            "commentCount",
+            "isMine",
+            "createdAt",
+            "updatedAt",
         ]
 
-    def get_author_name(self, obj):
+    def get_authorName(self, obj):
         return "익명" if obj.is_anonymous else obj.author.username
 
-    def get_comment_count(self, obj):
+    def get_commentCount(self, obj):
         return obj.comments.count()
 
-    def get_is_mine(self, obj):
+    def get_isMine(self, obj):
         request = self.context.get("request")
         return bool(request and request.user == obj.author)
 
 
 class PostCreateUpdateSerializer(serializers.ModelSerializer):
+    isAnonymous = serializers.BooleanField(source="is_anonymous", required=False)
+    allowNotification = serializers.BooleanField(source="allow_notification", required=False)
+
     class Meta:
         model = Post
-        fields = [
-            "id",
-            "board_type",
-            "title",
-            "content",
-            "is_anonymous",
-            "allow_notification",
-        ]
-        read_only_fields = ["id","board_type"]
+        fields = ["id", "title", "content", "isAnonymous", "allowNotification"]
+        read_only_fields = ["id"]
+
 
 class CommentSerializer(serializers.ModelSerializer):
-    author_name = serializers.SerializerMethodField()
+    authorName = serializers.SerializerMethodField()
+    isAnonymous = serializers.BooleanField(source="is_anonymous")
+    createdAt = serializers.DateTimeField(source="created_at")
+    updatedAt = serializers.DateTimeField(source="updated_at")
 
     class Meta:
         model = Comment
-        fields = [
-            "id",
-            "post",
-            "author_name",
-            "content",
-            "is_anonymous",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "post", "created_at", "updated_at"]
+        fields = ["id", "post", "authorName", "content", "isAnonymous", "createdAt", "updatedAt"]
+        read_only_fields = ["id", "post", "createdAt", "updatedAt"]
 
-    def get_author_name(self, obj):
-        if obj.is_anonymous:
-            return "익명"
-        return obj.author.username
+    def get_authorName(self, obj):
+        return "익명" if obj.is_anonymous else obj.author.username
 
 
 class CommentCreateUpdateSerializer(serializers.ModelSerializer):
+    isAnonymous = serializers.BooleanField(source="is_anonymous", required=False)
+
     class Meta:
         model = Comment
-        fields = ["content", "is_anonymous"]
+        fields = ["content", "isAnonymous"]
+
 
 class ReportCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = ["reason"]
 
+
 class ScrapSerializer(serializers.ModelSerializer):
-    post_id = serializers.IntegerField(source="post.id", read_only=True)
-    post_title = serializers.CharField(source="post.title", read_only=True)
-    board_type = serializers.CharField(source="post.board_type", read_only=True)
+    postId = serializers.IntegerField(source="post.id", read_only=True)
+    postTitle = serializers.CharField(source="post.title", read_only=True)
+    boardType = serializers.CharField(source="post.board_type", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at")
 
     class Meta:
         model = Scrap
-        fields = ["id", "post_id", "post_title", "board_type", "created_at"]
+        fields = ["id", "postId", "postTitle", "boardType", "createdAt"]
