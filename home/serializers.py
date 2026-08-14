@@ -31,6 +31,8 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "required_documents",
             "category",
             "organization",
+            "consult_phone",
+            "consult_link",
             "application_start",
             "application_end",
             "created_at",
