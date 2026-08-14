@@ -68,3 +68,20 @@ class Notification(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.message}"
 
+class ChecklistItem(models.Model):
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="checklist_items",
+    )
+    content = models.CharField(max_length=200)
+    is_done = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+    issue_guide_text = models.CharField(max_length=200, blank=True, null=True, help_text="발급 안내 문구")
+    issue_guide_url = models.URLField(blank=True, null=True, help_text="발급받기 버튼 연결 URL")
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"{self.application} - {self.content}"
