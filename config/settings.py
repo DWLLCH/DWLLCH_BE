@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'community',
     'chat',
     'b2g',
+    
 ]
 
 REST_FRAMEWORK = {
