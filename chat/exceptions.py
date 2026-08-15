@@ -29,3 +29,8 @@ class AlreadyReportedException(ChatAPIException):
     status_code = 400
     api_code = "CHAT_400_ALREADY_REPORTED"
     default_detail = "이미 신고한 AI 판독 결과입니다."
+
+class EmptySessionException(ChatAPIException):
+    status_code = 400
+    api_code = "CHAT_400_EMPTY_SESSION"
+    default_detail = "구조화할 대화 내용이 없습니다."

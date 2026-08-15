@@ -13,7 +13,10 @@ from chat.models import (
 
 
 class RiskCheckMessageSerializer(serializers.ModelSerializer):
-    file_url = serializers.SerializerMethodField()
+    fileUrl = serializers.SerializerMethodField()
+    riskLevel = serializers.CharField(source="risk_level")
+    analysisResult = serializers.JSONField(source="analysis_result")
+    createdAt = serializers.DateTimeField(source="created_at")
 
     class Meta:
         model = RiskCheckMessage
@@ -22,13 +25,13 @@ class RiskCheckMessageSerializer(serializers.ModelSerializer):
             "sender",
             "type",
             "content",
-            "file_url",
-            "risk_level",
-            "analysis_result",
-            "created_at",
+            "fileUrl",
+            "riskLevel",
+            "analysisResult",
+            "createdAt",
         ]
 
-    def get_file_url(self, obj):
+    def get_fileUrl(self, obj):
         if not obj.file:
             return None
 
@@ -53,15 +56,19 @@ class RiskCheckMessageSerializer(serializers.ModelSerializer):
 
 
 class RiskCheckSessionSerializer(serializers.ModelSerializer):
+    latestRiskLevel = serializers.CharField(source="latest_risk_level")
+    createdAt = serializers.DateTimeField(source="created_at")
+    updatedAt = serializers.DateTimeField(source="updated_at")
+
     class Meta:
         model = RiskCheckSession
         fields = [
             "id",
             "user",
             "status",
-            "latest_risk_level",
-            "created_at",
-            "updated_at",
+            "latestRiskLevel",
+            "createdAt",
+            "updatedAt",
         ]
         read_only_fields = fields
 
@@ -135,4 +142,6 @@ class MessageReportSerializer(serializers.ModelSerializer):
 
 class SupportConnectionSerializer(serializers.Serializer):
     consent = serializers.BooleanField(default=False)
-    connectTo = serializers.ChoiceField(choices=SupportConnection.ConnectTo.choices)
+    connectTo = serializers.ChoiceField(
+        choices=SupportConnection.ConnectTo.choices
+    )
