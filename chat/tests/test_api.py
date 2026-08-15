@@ -75,17 +75,94 @@ class RiskCheckAPITestCase(APITestCase):
         return RiskAnalysisResult(**values)
 
     def test_session_create_and_detail_use_common_response_format(self):
-        create_response = self.client.post("/chat/risk-check/sessions", {}, format="json")
+        create_response = self.client.post(
+            "/chat/risk-check/sessions",
+            {},
+            format="json",
+        )
 
-        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            create_response.status_code,
+            status.HTTP_201_CREATED,
+        )
         self.assertTrue(create_response.data["success"])
         self.assertEqual(create_response.data["code"], "SUCCESS")
-        session_id = create_response.data["data"]["id"]
 
-        detail_response = self.client.get(f"/chat/risk-check/sessions/{session_id}")
+        session_data = create_response.data["data"]
 
-        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(detail_response.data["data"]["messages"], [])
+        self.assertIn("latestRiskLevel", session_data)
+        self.assertIn("createdAt", session_data)
+        self.assertIn("updatedAt", session_data)
+
+        self.assertNotIn("latest_risk_level", session_data)
+        self.assertNotIn("created_at", session_data)
+        self.assertNotIn("updated_at", session_data)
+
+        session_id = session_data["id"]
+
+        detail_response = self.client.get(
+            f"/chat/risk-check/sessions/{session_id}"
+        )
+
+        self.assertEqual(
+            detail_response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        detail_data = detail_response.data["data"]
+
+        self.assertIn("latestRiskLevel", detail_data)
+        self.assertIn("createdAt", detail_data)
+        self.assertIn("updatedAt", detail_data)
+
+        self.assertNotIn("latest_risk_level", detail_data)
+        self.assertNotIn("created_at", detail_data)
+        self.assertNotIn("updated_at", detail_data)
+
+        self.assertEqual(detail_data["messages"], [])
+        
+    def test_message_list_uses_camel_case_fields(self):
+        session = self.create_session()
+
+        RiskCheckMessage.objects.create(
+            session=session,
+            sender=RiskCheckMessage.Sender.USER,
+            type=RiskCheckMessage.MessageType.TEXT,
+            content="테스트 메시지",
+            risk_level=RiskCheckSession.RiskLevel.HIGH,
+            analysis_result={
+                "summary": "테스트 분석 결과",
+            },
+        )
+
+        response = self.client.get(
+            f"/chat/risk-check/sessions/{session.id}/messages"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        message = response.data["data"][0]
+
+        self.assertIn("fileUrl", message)
+        self.assertIn("riskLevel", message)
+        self.assertIn("analysisResult", message)
+        self.assertIn("createdAt", message)
+
+        self.assertNotIn("file_url", message)
+        self.assertNotIn("risk_level", message)
+        self.assertNotIn("analysis_result", message)
+        self.assertNotIn("created_at", message)
+
+        self.assertEqual(message["riskLevel"], "HIGH")
+        self.assertEqual(
+            message["analysisResult"],
+            {
+                "summary": "테스트 분석 결과",
+            },
+        )
 
     def test_other_users_session_is_hidden(self):
         session = self.create_session(user=self.other_user)
@@ -108,7 +185,7 @@ class RiskCheckAPITestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["data"]["riskLevel"], "HIGH")
-        self.assertEqual(response.data["data"]["analysis"]["missingVerifications"], ["등기부등본 미확인"])
+        self.assertEqual(response.data["data"]["analysisResult"]["missingVerifications"], ["등기부등본 미확인"])
         self.assertEqual(session.messages.count(), 2)
         self.assertEqual(
             list(session.messages.values_list("sender", flat=True)),
@@ -364,7 +441,7 @@ class RiskCheckAPITestCase(APITestCase):
         detail_response = self.client.get(
             f"/chat/risk-check/sessions/{session.id}"
         )
-        file_url = detail_response.data["data"]["messages"][0]["file_url"]
+        file_url = detail_response.data["data"]["messages"][0]["fileUrl"]
         parsed_url = urlsplit(file_url)
 
         self.client.force_authenticate(user=None)

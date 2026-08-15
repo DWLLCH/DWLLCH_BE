@@ -11,13 +11,13 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.responses import success_response
 from chat.exceptions import (
     AlreadyReportedException,
     ConsentRequiredException,
+    EmptySessionException,
     GeminiServiceUnavailableException,
     ImageUnreadableException,
 )
@@ -187,7 +187,7 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
                 "messageId": user_message.id,
                 "assistantMessageId": assistant_message.id,
                 "riskLevel": result.risk_level,
-                 "analysis": analysis,
+                 "analysisResult": analysis,
                  "actionGuide": result.action_guide,
                  "externalAppLink": external_app_link,
                  "reply": result.reply,
@@ -247,15 +247,7 @@ class RiskCheckStructureView(APIView):  # 상황 구조화
         messages.reverse()
 
         if not messages:
-            return Response(
-                {
-                    "success": False,
-                    "code": "CHAT_400_EMPTY_SESSION",
-                    "message": "구조화할 대화 내용이 없습니다.",
-                    "data": None,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise EmptySessionException()
 
         try:
             result = structure_session(messages)
