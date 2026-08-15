@@ -21,10 +21,13 @@ class AuthAPITestCase(APITestCase):
                 "sido": "서울특별시",
                 "sigungu": "동대문구",
             },
+            "protectionType": "RESIDENTIAL_CARE",
             "housingType": "MONTHLY_RENT",
+            "housingSituation": "STABLE",
+            "livingStatus": ["EMPLOYED"],
             "incomeType": "EARNED",
-            "employmentType": "PART_TIME",
-            "educationStatus": "ENROLLED",
+            "supportReceived": ["SETTLEMENT_FUND"],
+            "neededHelp": ["HOUSING"],
         }
                     
     def create_test_user(self, **kwargs):
@@ -37,10 +40,13 @@ class AuthAPITestCase(APITestCase):
             "sido": "서울특별시",
             "sigungu": "동대문구",
             "detail_address": None,
+            "protection_type": User.ProtectionType.RESIDENTIAL_CARE,
             "housing_type": User.HousingType.MONTHLY_RENT,
+            "housing_situation": User.HousingSituation.STABLE,
+            "living_status": [User.LivingStatus.EMPLOYED],
             "income_type": User.IncomeType.EARNED,
-            "employment_type": User.EmploymentType.PART_TIME,
-            "education_status": User.EducationStatus.ENROLLED,
+            "support_received": [User.SupportType.SETTLEMENT_FUND],
+            "needed_help": [User.NeededHelp.HOUSING],
         }
 
         defaults.update(kwargs)

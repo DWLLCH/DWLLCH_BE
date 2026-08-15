@@ -41,10 +41,13 @@ class RiskCheckAPITestCase(APITestCase):
             protection_end_date=date(2028, 12, 31),
             sido="서울특별시",
             sigungu="동대문구",
+            protection_type=User.ProtectionType.RESIDENTIAL_CARE,
             housing_type=User.HousingType.MONTHLY_RENT,
+            housing_situation=User.HousingSituation.STABLE,
+            living_status=[User.LivingStatus.EMPLOYED],
             income_type=User.IncomeType.EARNED,
-            employment_type=User.EmploymentType.PART_TIME,
-            education_status=User.EducationStatus.ENROLLED,
+            support_received=[User.SupportType.SETTLEMENT_FUND],
+            needed_help=[User.NeededHelp.HOUSING],
         )
 
     def create_session(self, user=None, risk_level=RiskCheckSession.RiskLevel.NONE):
