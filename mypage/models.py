@@ -35,23 +35,6 @@ class Application(models.Model):
         return f"{self.user.email} - {self.policy.title} ({self.status})"
 
 
-class ChecklistItem(models.Model):
-    application = models.ForeignKey(
-        Application,
-        on_delete=models.CASCADE,
-        related_name="checklist_items",
-    )
-    content = models.CharField(max_length=200)
-    is_done = models.BooleanField(default=False)
-    order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["order"]
-
-    def __str__(self):
-        return f"{self.application} - {self.content}"
-
-
 class Notification(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
