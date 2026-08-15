@@ -22,9 +22,6 @@ class ConsultRequestListSerializer(serializers.ModelSerializer):
             "receivedAt",
         ]
 
-def get_userAlias(self, obj):
-    return obj.user_alias
-
 class ConsultRequestDetailSerializer(serializers.ModelSerializer):
     requestId = serializers.IntegerField(source="id")
     urgencyLevel = serializers.CharField(source="urgency_level")

@@ -2,7 +2,7 @@ from django.db.models import F
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
@@ -24,6 +24,11 @@ from .serializers import (
 @api_view(["GET", "POST"])
 @permission_classes([AllowAny])
 def post_list(request, board_type):
+    if board_type not in Post.BoardType.values:
+        raise ValidationError(
+            {"boardType": f"boardType은 {', '.join(Post.BoardType.values)} 중 하나여야 합니다."}
+        )
+
     if request.method == "GET":
         posts = Post.objects.select_related("author").filter(board_type=board_type)
         paginator = CommonPageNumberPagination()

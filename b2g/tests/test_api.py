@@ -151,10 +151,13 @@ class B2GDashboardAPITestCase(APITestCase):
             protection_end_date=date(2025, 1, 1),
             sido="서울특별시",
             sigungu="관악구",
+            protection_type=User.ProtectionType.RESIDENTIAL_CARE,
             housing_type=User.HousingType.JEONSE,
+            housing_situation=User.HousingSituation.STABLE,
+            living_status=[User.LivingStatus.NONE],
             income_type=User.IncomeType.NONE,
-            employment_type=User.EmploymentType.UNEMPLOYED,
-            education_status=User.EducationStatus.GRADUATED,
+            support_received=[User.SupportType.NONE],
+            needed_help=[User.NeededHelp.HOUSING],
         )
 
     def test_authentication_is_required(self):
