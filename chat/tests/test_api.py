@@ -185,7 +185,7 @@ class RiskCheckAPITestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["data"]["riskLevel"], "HIGH")
-        self.assertEqual(response.data["data"]["analysis"]["missingVerifications"], ["등기부등본 미확인"])
+        self.assertEqual(response.data["data"]["analysisResult"]["missingVerifications"], ["등기부등본 미확인"])
         self.assertEqual(session.messages.count(), 2)
         self.assertEqual(
             list(session.messages.values_list("sender", flat=True)),

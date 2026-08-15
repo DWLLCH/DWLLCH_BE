@@ -187,7 +187,7 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
                 "messageId": user_message.id,
                 "assistantMessageId": assistant_message.id,
                 "riskLevel": result.risk_level,
-                 "analysis": analysis,
+                 "analysisResult": analysis,
                  "actionGuide": result.action_guide,
                  "externalAppLink": external_app_link,
                  "reply": result.reply,
