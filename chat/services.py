@@ -91,7 +91,7 @@ STRUCTURE_PROMPT = """
 
 def _get_client():
     if not settings.GEMINI_CHAT_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
+        raise RuntimeError("GEMINI_CHAT_API_KEY 설정되지 않았습니다.")
 
     return genai.Client(
         api_key=settings.GEMINI_CHAT_API_KEY,
