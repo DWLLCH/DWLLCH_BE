@@ -34,7 +34,25 @@ def briefing_list(request):
     page = paginator.paginate_queryset(briefings, request)
     serializer = BriefingListSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)
+def _get_category_priority(user):
+    """사용자 needed_help 기준으로 카테고리 우선순위를 매긴다."""
+    mapping = {
+        "HOUSING": Briefing.Category.HOUSING,
+        "FINANCE": Briefing.Category.FINANCE,
+        "EMPLOYMENT": Briefing.Category.EMPLOYMENT,
+        "EDUCATION": Briefing.Category.EMPLOYMENT,
+        "POLICY_INFO": Briefing.Category.FINANCE,
+        "ADMIN_DOCS": Briefing.Category.FINANCE,
+        "COUNSELING": Briefing.Category.HOUSING,
+    }
 
+    priority = {}
+    for order, need in enumerate(user.needed_help):
+        category = mapping.get(need)
+        if category and category not in priority:
+            priority[category] = order
+
+    return priority
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
