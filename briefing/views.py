@@ -18,13 +18,20 @@ logger = logging.getLogger(__name__)
 @permission_classes([IsAuthenticated])
 def briefing_list(request):
     category = request.query_params.get("category")
+    user = request.user
+
     queryset = Briefing.objects.all()
 
     if category:
         queryset = queryset.filter(category=category)
 
+    briefings = list(queryset)
+
+    category_priority = _get_category_priority(user)
+    briefings.sort(key=lambda b: category_priority.get(b.category, 99))
+
     paginator = CommonPageNumberPagination()
-    page = paginator.paginate_queryset(queryset, request)
+    page = paginator.paginate_queryset(briefings, request)
     serializer = BriefingListSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)
 
