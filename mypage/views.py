@@ -20,6 +20,8 @@ from .serializers import (
     NotificationSerializer,
 )
 
+from users.serializers import OnboardingProfileSerializer
+
 User = get_user_model()
 
 
@@ -27,7 +29,11 @@ User = get_user_model()
 @permission_classes([IsAuthenticated])
 def mypage_status(request):
     user = request.user
-    d_day = (user.protection_end_date - date.today()).days
+
+    if user.protection_end_date:
+        d_day = (user.protection_end_date - date.today()).days
+    else:
+        d_day = None
 
     serializer = MypageStatusSerializer({
         "protection_end_date": user.protection_end_date,
@@ -39,7 +45,7 @@ def mypage_status(request):
     )
 
 
-@api_view(["GET", "PATCH"])
+@api_view(["GET", "POST", "PATCH"])
 @permission_classes([IsAuthenticated])
 def mypage_profile(request):
     user = request.user
@@ -49,6 +55,28 @@ def mypage_profile(request):
         return success_response(
             data=serializer.data,
             message="프로필 정보를 조회했습니다.",
+        )
+
+    if request.method == "POST":
+        if user.profile_completed:
+            return Response(
+                {
+                    "success": False,
+                    "code": "PROFILE_409_ALREADY_COMPLETED",
+                    "message": "이미 자립 프로필이 등록되어 있습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = OnboardingProfileSerializer(user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return success_response(
+            data=serializer.data,
+            message="자립 프로필이 등록되었습니다.",
+            status_code=status.HTTP_201_CREATED,
         )
 
     serializer = ProfileSerializer(user, data=request.data, partial=True)
