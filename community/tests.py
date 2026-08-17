@@ -679,3 +679,175 @@ class CommunityReplyTest(APITestCase):
             reply_data["parentId"],
             parent.id,
         )
+
+class CommunityPinnedPostTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="user@example.com",
+            username="user",
+            password="Test1234!",
+        )
+
+        self.admin = User.objects.create_user(
+            email="admin@example.com",
+            username="admin",
+            password="Test1234!",
+            is_staff=True,
+        )
+
+        self.free_post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="자유 게시글",
+            content="내용",
+        )
+
+        self.tip_pinned_post = Post.objects.create(
+            board_type=Post.BoardType.TIP,
+            author=self.admin,
+            title="TIP 고정 공지",
+            content="공지 내용",
+            is_pinned=True,
+        )
+
+        self.worry_pinned_post = Post.objects.create(
+            board_type=Post.BoardType.WORRY,
+            author=self.admin,
+            title="WORRY 고정 공지",
+            content="공지 내용",
+            is_pinned=True,
+        )
+
+    def authenticate(self, user):
+        refresh = RefreshToken.for_user(user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+    def test_admin_can_pin_post(self):
+        self.authenticate(self.admin)
+
+        response = self.client.patch(
+            f"/community/posts/{self.free_post.id}/pin",
+            {
+                "isPinned": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.free_post.refresh_from_db()
+
+        self.assertTrue(
+            self.free_post.is_pinned
+        )
+
+    def test_admin_can_unpin_post(self):
+        self.free_post.is_pinned = True
+        self.free_post.save()
+
+        self.authenticate(self.admin)
+
+        response = self.client.patch(
+            f"/community/posts/{self.free_post.id}/pin",
+            {
+                "isPinned": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.free_post.refresh_from_db()
+
+        self.assertFalse(
+            self.free_post.is_pinned
+        )
+
+    def test_normal_user_cannot_pin_post(self):
+        self.authenticate(self.user)
+
+        response = self.client.patch(
+            f"/community/posts/{self.free_post.id}/pin",
+            {
+                "isPinned": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_pinned_posts_are_included_across_board_types(self):
+        response = self.client.get(
+            "/community/boards/FREE/posts"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        posts = response.data["content"]
+
+        post_ids = [
+            post["id"]
+            for post in posts
+        ]
+
+        self.assertIn(
+            self.tip_pinned_post.id,
+            post_ids,
+        )
+
+        self.assertIn(
+            self.worry_pinned_post.id,
+            post_ids,
+        )
+
+        self.assertIn(
+            self.free_post.id,
+            post_ids,
+        )
+
+    def test_pinned_posts_are_ordered_first(self):
+        response = self.client.get(
+            "/community/boards/FREE/posts"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        posts = response.data["content"]
+
+        pinned_flags = [
+            post["isPinned"]
+            for post in posts
+        ]
+
+        first_normal_index = next(
+            (
+                index
+                for index, is_pinned in enumerate(pinned_flags)
+                if not is_pinned
+            ),
+            len(pinned_flags),
+        )
+
+        self.assertTrue(
+            all(
+                pinned_flags[index]
+                for index in range(first_normal_index)
+            )
+        )
