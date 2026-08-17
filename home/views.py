@@ -1,31 +1,29 @@
-from django.shortcuts import get_object_or_404
+import logging
+
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-import logging
-
-from .services import get_policy_chatbot_answer, match_policies_by_condition, GeminiRequestError
-
-logger = logging.getLogger(__name__)
-
-from common.responses import success_response
+from briefing.models import compute_profile_signature
 from common.pagination import CommonPageNumberPagination
+from common.responses import success_response
 
-from .models import Policy
+from .models import Policy, CurationMatchCache, compute_policy_ids_hash
 from .serializers import (
     PolicyListSerializer,
     PolicyDetailSerializer,
     SimilarPolicySerializer,
     PolicyChatbotQuerySerializer,
 )
-from .services import get_policy_chatbot_answer
+from .services import get_policy_chatbot_answer, match_policies_by_condition, GeminiRequestError
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
-
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -85,11 +83,16 @@ def home_curation(request):
 
     # 2. 조건 매칭 1차 필터링 
     keywords = [
-        User.LivingStatus(code).label for code in user.living_status
+        User.LivingStatus(code).label for code in (user.living_status or [])
     ] + [
-        User.NeededHelp(code).label for code in user.needed_help
+        User.NeededHelp(code).label for code in (user.needed_help or [])
     ]
-    keywords.append(user.get_housing_type_display())
+
+    housing_label = user.get_housing_type_display()
+    if housing_label:
+        keywords.append(housing_label)
+
+    keywords = [k for k in keywords if k]  # 혹시 모를 빈 값/None 전부 제거
 
     query = Q()
     for keyword in keywords:
