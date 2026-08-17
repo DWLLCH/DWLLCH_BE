@@ -5,16 +5,12 @@ from django.db import models
 class User(AbstractUser):
     email = models.EmailField(unique=True)
 
-    birth_date = models.DateField()
-    protection_end_date = models.DateField()
+    birth_date = models.DateField(null=True, blank=True)
+    protection_end_date = models.DateField(null=True, blank=True)
 
-    sido = models.CharField(max_length=50)
-    sigungu = models.CharField(max_length=50)
-    detail_address = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-    )
+    sido = models.CharField(max_length=50, null=True, blank=True)
+    sigungu = models.CharField(max_length=50, null=True, blank=True)
+    detail_address = models.CharField(max_length=255, blank=True, null=True)
 
     class ProtectionType(models.TextChoices):
         RESIDENTIAL_CARE = "RESIDENTIAL_CARE", "아동양육시설"
@@ -74,26 +70,18 @@ class User(AbstractUser):
         ADMIN_DOCS = "ADMIN_DOCS", "행정·서류"
         COUNSELING = "COUNSELING", "상담·도움"
 
-    protection_type = models.CharField(max_length=20, choices=ProtectionType.choices)
-    housing_type = models.CharField(max_length=20, choices=HousingType.choices)
-    housing_situation = models.CharField(max_length=30, choices=HousingSituation.choices)
-    living_status = models.JSONField(default=list)
-    income_type = models.CharField(max_length=20, choices=IncomeType.choices)
-    support_received = models.JSONField(default=list)
-    needed_help = models.JSONField(default=list)
+    protection_type = models.CharField(max_length=20, choices=ProtectionType.choices, null=True, blank=True)
+    housing_type = models.CharField(max_length=20, choices=HousingType.choices, null=True, blank=True)
+    housing_situation = models.CharField(max_length=30, choices=HousingSituation.choices, null=True, blank=True)
+    living_status = models.JSONField(default=list, blank=True)
+    income_type = models.CharField(max_length=20, choices=IncomeType.choices, null=True, blank=True)
+    support_received = models.JSONField(default=list, blank=True)
+    needed_help = models.JSONField(default=list, blank=True)
 
     USERNAME_FIELD = "email"
 
     REQUIRED_FIELDS = [
-        "username",
-        "birth_date",
-        "protection_end_date",
-        "sido",
-        "sigungu",
-        "protection_type",
-        "housing_type",
-        "housing_situation",
-        "income_type",
+        "username"
     ]
 
     def __str__(self):
