@@ -24,7 +24,7 @@ class RegionSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    birthDate = serializers.DateField(source="birth_date", read_only=True)
+    birthDate = serializers.DateField(source="birth_date", required=False)
     region = RegionSerializer(source="*", required=False)
     protectionEndDate = serializers.DateField(source="protection_end_date", required=False)
     protectionType = serializers.ChoiceField(

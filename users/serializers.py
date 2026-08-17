@@ -26,44 +26,6 @@ class SignupSerializer(serializers.ModelSerializer):
         write_only=True,
     )
 
-    region = RegionSerializer()
-
-    birthDate = serializers.DateField(
-        source="birth_date",
-    )
-    protectionEndDate = serializers.DateField(
-        source="protection_end_date",
-    )
-
-    protectionType = serializers.ChoiceField(
-        source="protection_type",
-        choices=User.ProtectionType.choices,
-    )
-    housingType = serializers.ChoiceField(
-        source="housing_type",
-        choices=User.HousingType.choices,
-    )
-    housingSituation = serializers.ChoiceField(
-        source="housing_situation",
-        choices=User.HousingSituation.choices,
-    )
-    livingStatus = serializers.ListField(
-        source="living_status",
-        child=serializers.ChoiceField(choices=User.LivingStatus.choices),
-    )
-    incomeType = serializers.ChoiceField(
-        source="income_type",
-        choices=User.IncomeType.choices,
-    )
-    supportReceived = serializers.ListField(
-        source="support_received",
-        child=serializers.ChoiceField(choices=User.SupportType.choices),
-    )
-    neededHelp = serializers.ListField(
-        source="needed_help",
-        child=serializers.ChoiceField(choices=User.NeededHelp.choices),
-    )
-
     class Meta:
         model = User
         fields = [
@@ -71,16 +33,6 @@ class SignupSerializer(serializers.ModelSerializer):
             "username",
             "password",
             "passwordConfirm",
-            "birthDate",
-            "region",
-            "protectionEndDate",
-            "protectionType",
-            "housingType",
-            "housingSituation",
-            "livingStatus",
-            "incomeType",
-            "supportReceived",
-            "neededHelp",
         ]
 
     def validate_email(self, value):
@@ -97,20 +49,10 @@ class SignupSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate_neededHelp(self, value):
-        if len(value) > 3:
-            raise serializers.ValidationError("최대 3개까지 선택할 수 있습니다.")
-        return value
-
     def validate(self, attrs):
         if attrs["password"] != attrs["passwordConfirm"]:
             raise serializers.ValidationError({
                 "passwordConfirm": "비밀번호가 일치하지 않습니다."
-            })
-
-        if attrs["birth_date"] > date.today():
-            raise serializers.ValidationError({
-                "birthDate": "생년월일은 미래 날짜일 수 없습니다."
             })
 
         return attrs
@@ -119,23 +61,9 @@ class SignupSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password")
         validated_data.pop("passwordConfirm")
 
-        region = validated_data.pop("region")
-
         user = User(
             email=validated_data["email"],
             username=validated_data["username"],
-            birth_date=validated_data["birth_date"],
-            protection_end_date=validated_data["protection_end_date"],
-            sido=region["sido"],
-            sigungu=region["sigungu"],
-            detail_address=region.get("detail_address"),
-            protection_type=validated_data["protection_type"],
-            housing_type=validated_data["housing_type"],
-            housing_situation=validated_data["housing_situation"],
-            living_status=validated_data["living_status"],
-            income_type=validated_data["income_type"],
-            support_received=validated_data["support_received"],
-            needed_help=validated_data["needed_help"],
         )
 
         user.set_password(password)

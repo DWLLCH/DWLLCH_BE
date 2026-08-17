@@ -20,6 +20,22 @@ from .serializers import (
     AccountDeleteSerializer,
 )
 
+def issue_tokens(user):      # DB에 refresh token 저장
+    refresh = RefreshToken.for_user(user)
+    access_token = str(refresh.access_token)
+    refresh_token = str(refresh)
+
+    RefreshTokenModel.objects.update_or_create(
+        user=user,
+        defaults={
+            "token": refresh_token,
+            "expires_at": timezone.now() + api_settings.REFRESH_TOKEN_LIFETIME,
+        },
+    )
+
+    return access_token, refresh_token
+
+
 class SignupView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -40,6 +56,8 @@ class SignupView(APIView):
 
         user = serializer.save()
 
+        access_token, refresh_token = issue_tokens(user)
+
         return Response(
             {
                 "success": True,
@@ -47,6 +65,8 @@ class SignupView(APIView):
                 "message": "회원가입이 완료되었습니다.",
                 "data": {
                     "userId": user.id,
+                    "accessToken": access_token,
+                    "refreshToken": refresh_token,
                 },
             },
             status=status.HTTP_201_CREATED,
@@ -166,17 +186,7 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-        refresh_token = str(refresh)
-
-        RefreshTokenModel.objects.update_or_create(     # DB에 refresh token 저장
-            user=user,
-            defaults={
-                "token": refresh_token,
-                "expires_at": timezone.now() + api_settings.REFRESH_TOKEN_LIFETIME,
-            },
-        )
+        access_token, refresh_token = issue_tokens(user) 
         
         return Response(
             {
