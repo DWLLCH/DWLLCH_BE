@@ -78,12 +78,12 @@ def home_guest(request):
 def home_curation(request):
     user = request.user
 
-    # 1. 지역 매칭 (AI 불필요)
+    # 1. 지역 매칭
     region_policies = Policy.objects.filter(
         Q(region_sido__isnull=True) | Q(region_sido="") | Q(region_sido=user.sido)
     ).order_by("-created_at")[:10]
 
-    # 2. 조건 매칭 1차 필터링 (기존 키워드 매칭 방식 유지)
+    # 2. 조건 매칭 1차 필터링 
     keywords = [
         User.LivingStatus(code).label for code in user.living_status
     ] + [
@@ -97,29 +97,53 @@ def home_curation(request):
 
     filtered_policies = list(Policy.objects.filter(query).order_by("-created_at")[:20])
 
-    # 3. 프로필 정보 부족 체크
     profile_incomplete = not user.needed_help
 
-    # 4. AI 조건 매칭 (2차) - 실패 시 폴백
+    # 3. 캐시 조회 → 없으면 AI 호출
     condition_matched = []
     if filtered_policies:
-        try:
-            result = match_policies_by_condition(filtered_policies, user)
-            policy_map = {p.id: p for p in filtered_policies}
-            for match in result.matches:
-                policy = policy_map.get(match.policy_id)
+        profile_signature = compute_profile_signature(user)
+        policy_ids_hash = compute_policy_ids_hash(filtered_policies)
+
+        cache = CurationMatchCache.objects.filter(
+            profile_signature=profile_signature, policy_ids_hash=policy_ids_hash
+        ).first()
+
+        policy_map = {p.id: p for p in filtered_policies}
+
+        if cache:
+            for match in cache.matched_result:
+                policy = policy_map.get(match["policy_id"])
                 if policy:
                     condition_matched.append({
                         "policy": PolicyListSerializer(policy).data,
-                        "matchReason": match.match_reason,
+                        "matchReason": match["match_reason"],
                     })
-        except GeminiRequestError:
-            logger.exception("Gemini condition matching failed: user_id=%s", user.id)
-            # 폴백: 이유 없이 키워드 매칭 결과 그대로 사용
-            condition_matched = [
-                {"policy": PolicyListSerializer(p).data, "matchReason": None}
-                for p in filtered_policies[:10]
-            ]
+        else:
+            try:
+                result = match_policies_by_condition(filtered_policies, user)
+                matched_result = [
+                    {"policy_id": m.policy_id, "match_reason": m.match_reason}
+                    for m in result.matches
+                ]
+                CurationMatchCache.objects.update_or_create(
+                    profile_signature=profile_signature,
+                    policy_ids_hash=policy_ids_hash,
+                    defaults={"matched_result": matched_result},
+                )
+                for match in result.matches:
+                    policy = policy_map.get(match.policy_id)
+                    if policy:
+                        condition_matched.append({
+                            "policy": PolicyListSerializer(policy).data,
+                            "matchReason": match.match_reason,
+                        })
+            except GeminiRequestError:
+                logger.exception("Gemini condition matching failed: user_id=%s", user.id)
+                condition_matched = [
+                    {"policy": PolicyListSerializer(p).data, "matchReason": None}
+                    for p in filtered_policies[:10]
+                ]
 
     data = {
         "userSummary": {
