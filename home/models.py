@@ -1,6 +1,10 @@
 from django.conf import settings
 from django.db import models
 
+import hashlib
+
+from django.conf import settings
+from django.db import models
 
 class Policy(models.Model):
     class Category(models.TextChoices):
@@ -31,3 +35,21 @@ class Policy(models.Model):
 
     def __str__(self):
         return self.title
+
+class CurationMatchCache(models.Model):
+    profile_signature = models.CharField(max_length=16, db_index=True)
+    policy_ids_hash = models.CharField(max_length=16)
+    matched_result = models.JSONField(help_text="AI가 생성한 매칭 결과 (policy_id, match_reason 쌍의 리스트)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["profile_signature", "policy_ids_hash"]
+
+    def __str__(self):
+        return f"{self.profile_signature} - {self.policy_ids_hash}"
+
+
+def compute_policy_ids_hash(policies):
+    ids = sorted(p.id for p in policies)
+    raw = ",".join(str(i) for i in ids)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
