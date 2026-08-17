@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.db import transaction
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
@@ -58,26 +59,34 @@ def mypage_profile(request):
         )
 
     if request.method == "POST":
-        if user.profile_completed:
-            return Response(
-                {
-                    "success": False,
-                    "code": "PROFILE_409_ALREADY_COMPLETED",
-                    "message": "이미 자립 프로필이 등록되어 있습니다.",
-                    "data": None,
-                },
-                status=status.HTTP_409_CONFLICT,
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(
+                pk=request.user.pk
             )
 
-        serializer = OnboardingProfileSerializer(user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+            if user.profile_completed:
+                return Response(
+                    {
+                        "success": False,
+                        "code": "PROFILE_409_ALREADY_COMPLETED",
+                        "message": "이미 자립 프로필이 등록되어 있습니다.",
+                        "data": None,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
-        return success_response(
-            data=serializer.data,
-            message="자립 프로필이 등록되었습니다.",
-            status_code=status.HTTP_201_CREATED,
-        )
+            serializer = OnboardingProfileSerializer(
+                user,
+                data=request.data,
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            return success_response(
+                data=serializer.data,
+                message="자립 프로필이 등록되었습니다.",
+                status_code=status.HTTP_201_CREATED,
+            )
 
     serializer = ProfileSerializer(user, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)

@@ -26,7 +26,7 @@ class RegionSerializer(serializers.Serializer):
 class ProfileSerializer(serializers.ModelSerializer):
     birthDate = serializers.DateField(source="birth_date", read_only=True)
     region = RegionSerializer(source="*", required=False)
-    protectionEndDate = serializers.DateField(source="protection_end_date", required=False)
+    protectionEndDate = serializers.DateField(source="protection_end_date", required=False, allow_null=True)
     protectionType = serializers.ChoiceField(
         source="protection_type", choices=User.ProtectionType.choices, required=False,
     )
@@ -82,6 +82,33 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["email", "username"]
 
+
+    def validate(self, attrs):
+        protection_status = attrs.get(
+            "protection_status",
+            self.instance.protection_status,
+        )
+        protection_end_date = attrs.get(
+            "protection_end_date",
+            self.instance.protection_end_date,
+        )
+
+        if protection_status == User.ProtectionStatus.PROTECTED:
+            attrs["protection_end_date"] = None
+
+        elif (
+            protection_status in [
+                User.ProtectionStatus.SCHEDULED,
+                User.ProtectionStatus.ENDED,
+            ]
+            and protection_end_date is None
+        ):
+            raise serializers.ValidationError({
+                "protectionEndDate": "보호 종료일을 입력해주세요."
+            })
+
+        return attrs
+    
     def validate_neededHelp(self, value):
         if len(value) > 3:
             raise serializers.ValidationError("최대 3개까지 선택할 수 있습니다.")

@@ -206,3 +206,61 @@ class OnboardingProfileTest(APITestCase):
             self.user.housing_type,
             User.HousingType.JEONSE,
         )
+
+    def test_patch_protected_status_clears_end_date(self):
+        self.client.post(
+            self.url,
+            self.valid_data,
+            format="json",
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "protectionStatus": "PROTECTED",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.user.refresh_from_db()
+
+        self.assertEqual(
+            self.user.protection_status,
+            User.ProtectionStatus.PROTECTED,
+        )
+        self.assertIsNone(
+            self.user.protection_end_date,
+        )
+
+    def test_patch_scheduled_without_end_date_fail(self):
+        self.client.post(
+            self.url,
+            self.valid_data,
+            format="json",
+        )
+
+        self.client.patch(
+            self.url,
+            {
+                "protectionStatus": "PROTECTED",
+            },
+            format="json",
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "protectionStatus": "SCHEDULED",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
