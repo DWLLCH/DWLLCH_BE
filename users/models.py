@@ -19,6 +19,11 @@ class User(AbstractUser):
         ETC = "ETC", "기타"
         UNKNOWN = "UNKNOWN", "잘 모르겠어요"
 
+    class ProtectionStatus(models.TextChoices):
+        PROTECTED = "PROTECTED", "아직 보호 중이에요"
+        SCHEDULED = "SCHEDULED", "보호 종료 예정이에요"
+        ENDED = "ENDED", "보호 종료했어요"
+
     class HousingType(models.TextChoices):
         MONTHLY_RENT = "MONTHLY_RENT", "월세"
         JEONSE = "JEONSE", "전세"
@@ -71,12 +76,14 @@ class User(AbstractUser):
         COUNSELING = "COUNSELING", "상담·도움"
 
     protection_type = models.CharField(max_length=20, choices=ProtectionType.choices, null=True, blank=True)
+    protection_status = models.CharField(max_length=20, choices=ProtectionStatus.choices, null=True, blank=True)
     housing_type = models.CharField(max_length=20, choices=HousingType.choices, null=True, blank=True)
     housing_situation = models.CharField(max_length=30, choices=HousingSituation.choices, null=True, blank=True)
     living_status = models.JSONField(default=list, blank=True)
     income_type = models.CharField(max_length=20, choices=IncomeType.choices, null=True, blank=True)
     support_received = models.JSONField(default=list, blank=True)
     needed_help = models.JSONField(default=list, blank=True)
+    profile_completed = models.BooleanField(default=False)
 
     USERNAME_FIELD = "email"
 
