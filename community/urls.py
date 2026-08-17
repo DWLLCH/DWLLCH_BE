@@ -11,4 +11,6 @@ urlpatterns = [
     path("community/comments/<int:comment_id>/report", views.comment_report, name="comment-report"),
     path("community/posts/<int:post_id>/scrap", views.post_scrap, name="post-scrap"),
     path("community/scraps", views.scrap_list, name="scrap-list"),
+    path("community/posts/<int:post_id>/like", views.post_like, name="post-like"),
+    path("community/comments/<int:comment_id>/like", views.comment_like, name="comment-like"),
 ]
