@@ -1,4 +1,3 @@
-from .models import Policy
 import json
 
 import httpx
@@ -6,6 +5,11 @@ from django.conf import settings
 from google import genai
 from google.genai import errors as genai_errors, types
 from pydantic import BaseModel, Field, ValidationError
+
+from chat.models import RiskCheckMessage
+
+from .models import Policy
+
 
 def get_policy_chatbot_answer(question: str, policy_id: int | None = None) -> str:
     """
@@ -20,7 +24,6 @@ def get_policy_chatbot_answer(question: str, policy_id: int | None = None) -> st
         except Policy.DoesNotExist:
             context = ""
 
-    # TODO: 여기서 외부 AI API(requests/httpx) 호출로 교체
     if context:
         return f"'{question}'에 대한 답변입니다. 관련 정책: {context[:100]}..."
     return f"'{question}'에 대한 일반적인 답변 준비 중입니다."
@@ -50,7 +53,14 @@ CONDITION_MATCH_PROMPT = """
 4. 사용자 상황에 왜 이 정책이 맞는지 이유를 한 문장(40자 이내)으로 작성하세요.
 5. 명확하게 맞는 정책이 없으면 matches를 빈 배열로 반환하세요.
 6. 최대 5개까지만 추천하세요.
+7. "최근 챗봇 상담에서 자주 물어본 주제"가 있다면, 관련 정책의 추천 우선순위를 높이고 이유에 자연스럽게 반영하세요.
 """
+
+CHAT_TOPIC_KEYWORDS = {
+    "HOUSING": ["주거", "월세", "전세", "집", "임대"],
+    "FINANCE": ["자립수당", "정착금", "대출", "적금"],
+    "EMPLOYMENT": ["취업", "일자리", "알바", "직장"],
+}
 
 
 def _get_client():
@@ -73,6 +83,21 @@ def _parse_response(response, schema):
     return schema.model_validate(json.loads(response.text))
 
 
+def get_frequent_chat_topics(user, limit=1):
+    messages = RiskCheckMessage.objects.filter(
+        session__user=user, sender=RiskCheckMessage.Sender.USER
+    ).values_list("content", flat=True)
+
+    counts = {topic: 0 for topic in CHAT_TOPIC_KEYWORDS}
+    for content in messages:
+        for topic, keywords in CHAT_TOPIC_KEYWORDS.items():
+            if any(kw in content for kw in keywords):
+                counts[topic] += 1
+
+    sorted_topics = sorted(counts.items(), key=lambda x: -x[1])
+    return [topic for topic, count in sorted_topics[:limit] if count > 0]
+
+
 def match_policies_by_condition(policies, user):
     if not policies:
         return ConditionMatchResult(matches=[])
@@ -83,10 +108,15 @@ def match_policies_by_condition(policies, user):
         f"- id={p.id}, 제목={p.title}, 카테고리={p.category}, 자격요건={p.eligibility}"
         for p in policies
     )
+
+    chat_topics = get_frequent_chat_topics(user)
+    chat_topics_text = ", ".join(chat_topics) if chat_topics else "없음"
+
     profile_text = (
         f"생활 형태: {', '.join(user.living_status) or '정보 없음'}\n"
         f"필요한 도움: {', '.join(user.needed_help) or '정보 없음'}\n"
-        f"주거 상황: {user.housing_situation or '정보 없음'}"
+        f"주거 상황: {user.housing_situation or '정보 없음'}\n"
+        f"최근 챗봇 상담에서 자주 물어본 주제: {chat_topics_text}"
     )
 
     prompt = f"""
