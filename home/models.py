@@ -20,6 +20,10 @@ class Policy(models.Model):
     category = models.CharField(max_length=20, choices=Category.choices)
     target_condition = models.TextField(help_text="AI 큐레이션 매칭용 키워드 텍스트")
     organization = models.CharField(max_length=100, help_text="주관 기관")
+    region_sido = models.CharField(
+        max_length=50, blank=True, null=True,
+        help_text="특정 시도 대상 정책이면 입력, 전국 대상이면 비워둠",
+    )
     application_start = models.DateField(null=True, blank=True)
     application_end = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

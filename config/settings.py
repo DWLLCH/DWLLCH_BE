@@ -182,6 +182,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.User'
 
 GEMINI_CHAT_API_KEY = os.getenv("GEMINI_CHAT_API_KEY", "")
+GEMINI_HOME_API_KEY = os.getenv("GEMINI_HOME_API_KEY", "") 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "30000"))
 

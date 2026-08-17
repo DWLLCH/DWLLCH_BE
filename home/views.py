@@ -6,6 +6,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+import logging
+
+from .services import get_policy_chatbot_answer, match_policies_by_condition, GeminiRequestError
+
+logger = logging.getLogger(__name__)
+
 from common.responses import success_response
 from common.pagination import CommonPageNumberPagination
 
@@ -64,11 +70,20 @@ def home_guest(request):
         message="비로그인 홈 데이터를 조회했습니다.",
     )
 
+
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def home_curation(request):
     user = request.user
 
+    # 1. 지역 매칭 (AI 불필요)
+    region_policies = Policy.objects.filter(
+        Q(region_sido__isnull=True) | Q(region_sido="") | Q(region_sido=user.sido)
+    ).order_by("-created_at")[:10]
+
+    # 2. 조건 매칭 1차 필터링 (기존 키워드 매칭 방식 유지)
     keywords = [
         User.LivingStatus(code).label for code in user.living_status
     ] + [
@@ -80,7 +95,31 @@ def home_curation(request):
     for keyword in keywords:
         query |= Q(target_condition__icontains=keyword)
 
-    policies = Policy.objects.filter(query).order_by("-created_at")[:10]
+    filtered_policies = list(Policy.objects.filter(query).order_by("-created_at")[:20])
+
+    # 3. 프로필 정보 부족 체크
+    profile_incomplete = not user.needed_help
+
+    # 4. AI 조건 매칭 (2차) - 실패 시 폴백
+    condition_matched = []
+    if filtered_policies:
+        try:
+            result = match_policies_by_condition(filtered_policies, user)
+            policy_map = {p.id: p for p in filtered_policies}
+            for match in result.matches:
+                policy = policy_map.get(match.policy_id)
+                if policy:
+                    condition_matched.append({
+                        "policy": PolicyListSerializer(policy).data,
+                        "matchReason": match.match_reason,
+                    })
+        except GeminiRequestError:
+            logger.exception("Gemini condition matching failed: user_id=%s", user.id)
+            # 폴백: 이유 없이 키워드 매칭 결과 그대로 사용
+            condition_matched = [
+                {"policy": PolicyListSerializer(p).data, "matchReason": None}
+                for p in filtered_policies[:10]
+            ]
 
     data = {
         "userSummary": {
@@ -88,8 +127,12 @@ def home_curation(request):
             "sigungu": user.sigungu,
             "protectionEndDate": user.protection_end_date,
         },
-        "curatedPolicies": PolicyListSerializer(policies, many=True).data,
+        "regionMatched": PolicyListSerializer(region_policies, many=True).data,
+        "conditionMatched": condition_matched,
+        "hasMatch": bool(condition_matched),
+        "profileIncomplete": profile_incomplete,
     }
+
     return success_response(
         data=data,
         message="맞춤 정책을 조회했습니다.",
