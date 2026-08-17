@@ -11,23 +11,75 @@ from chat.models import RiskCheckMessage
 from .models import Policy
 
 
-def get_policy_chatbot_answer(question: str, policy_id: int | None = None) -> str:
-    """
-    제도 전용 챗봇 질의에 대한 답변을 생성한다.
-    TODO: 실제 AI API 연동으로 교체 예정 (지금은 임시 응답)
-    """
-    context = ""
+class ChatbotAnswerResult(BaseModel):
+    answer: str
+    answerable: bool
+
+
+CHATBOT_PROMPT = """
+당신은 자립준비청년을 위한 제도 안내 챗봇입니다.
+
+다음 정책을 반드시 지키세요.
+
+1. 아래 "정책 정보" 안에 있는 내용만 사용해서 답하세요.
+2. 정책 정보에 없는 금액, 조건, 날짜를 추측해서 답하지 마세요.
+3. 정책 정보로 답할 수 없는 질문이면, answerable을 false로 하고
+   "정확한 확인이 어렵습니다. 관련 기관에 직접 문의해보세요" 같은 취지로 답하세요.
+4. 답변은 친절하고 간결한 한국어로 작성하세요.
+"""
+
+
+def get_policy_chatbot_answer(question: str, policy_id: int | None = None) -> ChatbotAnswerResult:
+    client = _get_client()
+
     if policy_id:
         try:
             policy = Policy.objects.get(id=policy_id)
-            context = f"[{policy.title}] {policy.content}"
+            policy_context = (
+                f"제목: {policy.title}\n"
+                f"소개: {policy.content}\n"
+                f"신청자격: {policy.eligibility}\n"
+                f"신청방법: {policy.application_method}\n"
+                f"준비서류: {policy.required_documents}"
+            )
         except Policy.DoesNotExist:
-            context = ""
+            policy_context = "해당 정책 정보를 찾을 수 없습니다."
+    else:
+        related_policies = Policy.objects.filter(title__icontains=question)[:5]
+        if related_policies:
+            policy_context = "\n\n".join(
+                f"[{p.title}]\n소개: {p.content}\n신청자격: {p.eligibility}"
+                for p in related_policies
+            )
+        else:
+            policy_context = "관련 정책 정보를 찾지 못했습니다."
 
-    if context:
-        return f"'{question}'에 대한 답변입니다. 관련 정책: {context[:100]}..."
-    return f"'{question}'에 대한 일반적인 답변 준비 중입니다."
+    prompt = f"""
+{CHATBOT_PROMPT}
 
+정책 정보:
+{policy_context}
+
+사용자 질문:
+{question}
+"""
+
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ChatbotAnswerResult,
+            ),
+        )
+    except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
+        raise GeminiRequestError from exc
+
+    try:
+        return _parse_response(response, ChatbotAnswerResult)
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc
 
 class MatchedPolicy(BaseModel):
     policy_id: int

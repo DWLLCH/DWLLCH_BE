@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import APIException
 
 from briefing.models import compute_profile_signature
 from common.pagination import CommonPageNumberPagination
@@ -191,12 +192,19 @@ def policy_chatbot_query(request):
     serializer = PolicyChatbotQuerySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    answer = get_policy_chatbot_answer(
-        question=serializer.validated_data["question"],
-        policy_id=serializer.validated_data.get("policy_id"),
-    )
+    try:
+        result = get_policy_chatbot_answer(
+            question=serializer.validated_data["question"],
+            policy_id=serializer.validated_data.get("policy_id"),
+        )
+    except GeminiRequestError as exc:
+        logger.exception("Gemini chatbot query failed")
+        raise APIException(
+            detail="AI 챗봇 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.",
+            code="COMMON_500_SERVER_ERROR",
+        ) from exc
 
     return success_response(
-        data={"answer": answer},
+        data={"answer": result.answer, "answerable": result.answerable},
         message="정책 관련 질문에 답변했습니다.",
     )
