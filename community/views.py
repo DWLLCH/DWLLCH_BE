@@ -130,6 +130,58 @@ def post_list(request, board_type):
     )
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def latest_post_list(request):
+    posts = (
+        Post.objects
+        .select_related("author")
+        .annotate(
+            annotated_like_count=Count(
+                "likes",
+                distinct=True,
+            ),
+        )
+        .order_by(
+            "-is_pinned",
+            "-created_at",
+        )
+    )
+
+    if request.user.is_authenticated:
+        posts = posts.annotate(
+            annotated_is_liked=Exists(
+                PostLike.objects.filter(
+                    post_id=OuterRef("pk"),
+                    user=request.user,
+                )
+            )
+        )
+    else:
+        posts = posts.annotate(
+            annotated_is_liked=Value(
+                False,
+                output_field=BooleanField(),
+            )
+        )
+
+    paginator = CommonPageNumberPagination()
+    page = paginator.paginate_queryset(
+        posts,
+        request,
+    )
+
+    serializer = PostListSerializer(
+        page,
+        many=True,
+        context={"request": request},
+    )
+
+    return paginator.get_paginated_response(
+        serializer.data
+    )
+
+
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([AllowAny])
 def post_detail(request, post_id):

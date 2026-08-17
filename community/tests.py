@@ -851,3 +851,140 @@ class CommunityPinnedPostTest(APITestCase):
                 for index in range(first_normal_index)
             )
         )
+
+class CommunityLatestPostTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="latest@example.com",
+            username="latestuser",
+            password="Test1234!",
+        )
+
+        self.tip_post = Post.objects.create(
+            board_type=Post.BoardType.TIP,
+            author=self.user,
+            title="꿀팁 글",
+            content="꿀팁 내용",
+        )
+
+        self.worry_post = Post.objects.create(
+            board_type=Post.BoardType.WORRY,
+            author=self.user,
+            title="고민 글",
+            content="고민 내용",
+        )
+
+        self.free_post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="자유 글",
+            content="자유 내용",
+        )
+
+        self.url = "/community/posts"
+
+    def test_latest_posts_include_all_board_types(self):
+        response = self.client.get(
+            self.url
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        posts = response.data["content"]
+
+        post_ids = [
+            post["id"]
+            for post in posts
+        ]
+
+        self.assertIn(
+            self.tip_post.id,
+            post_ids,
+        )
+        self.assertIn(
+            self.worry_post.id,
+            post_ids,
+        )
+        self.assertIn(
+            self.free_post.id,
+            post_ids,
+        )
+
+    def test_latest_posts_return_board_type(self):
+        response = self.client.get(
+            self.url
+        )
+
+        posts = response.data["content"]
+
+        board_types = {
+            post["boardType"]
+            for post in posts
+        }
+
+        self.assertIn(
+            Post.BoardType.TIP,
+            board_types,
+        )
+        self.assertIn(
+            Post.BoardType.WORRY,
+            board_types,
+        )
+        self.assertIn(
+            Post.BoardType.FREE,
+            board_types,
+        )
+
+    def test_pinned_post_is_ordered_first(self):
+        pinned_post = Post.objects.create(
+            board_type=Post.BoardType.TIP,
+            author=self.user,
+            title="고정 공지",
+            content="공지입니다.",
+            is_pinned=True,
+        )
+
+        response = self.client.get(
+            self.url
+        )
+
+        posts = response.data["content"]
+
+        self.assertEqual(
+            posts[0]["id"],
+            pinned_post.id,
+        )
+
+        self.assertTrue(
+            posts[0]["isPinned"]
+        )
+
+    def test_latest_posts_pagination(self):
+        for index in range(25):
+            Post.objects.create(
+                board_type=Post.BoardType.FREE,
+                author=self.user,
+                title=f"게시글 {index}",
+                content="내용",
+            )
+
+        response = self.client.get(
+            f"{self.url}?page=0&size=20"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            len(response.data["content"]),
+            20,
+        )
+
+        self.assertTrue(
+            response.data["hasNext"]
+        )
