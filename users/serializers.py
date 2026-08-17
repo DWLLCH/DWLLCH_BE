@@ -90,11 +90,8 @@ class ReissueSerializer(serializers.Serializer):
 
 
 class OnboardingProfileSerializer(serializers.ModelSerializer):
-    region = RegionSerializer()
-
-    birthDate = serializers.DateField(
-        source="birth_date",
-    )
+    region = RegionSerializer(source="*")
+    birthDate = serializers.DateField(source="birth_date")
     protectionType = serializers.ChoiceField(
         source="protection_type",
         choices=User.ProtectionType.choices,
@@ -195,12 +192,11 @@ class OnboardingProfileSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
-        region = validated_data.pop("region")
-
         instance.birth_date = validated_data["birth_date"]
-        instance.sido = region["sido"]
-        instance.sigungu = region["sigungu"]
-        instance.detail_address = region.get("detail_address")
+        
+        instance.sido = validated_data["sido"]
+        instance.sigungu = validated_data["sigungu"]
+        instance.detail_address = validated_data.get("detail_address")
 
         instance.protection_type = validated_data["protection_type"]
         instance.protection_status = validated_data["protection_status"]
