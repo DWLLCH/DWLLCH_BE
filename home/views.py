@@ -6,6 +6,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+import logging
+
+from .services import get_policy_chatbot_answer, match_policies_by_condition, GeminiRequestError
+
+logger = logging.getLogger(__name__)
+
 from common.responses import success_response
 from common.pagination import CommonPageNumberPagination
 
@@ -64,11 +70,7 @@ def home_guest(request):
         message="비로그인 홈 데이터를 조회했습니다.",
     )
 
-import logging
 
-from .services import get_policy_chatbot_answer, match_policies_by_condition, GeminiRequestError
-
-logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
