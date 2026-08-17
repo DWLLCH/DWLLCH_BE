@@ -1,5 +1,6 @@
 from django.db.models import (
     F,
+    Q,
     Count,
     Exists,
     OuterRef,
@@ -28,6 +29,7 @@ from .serializers import (
     PostListSerializer,
     PostDetailSerializer,
     PostCreateUpdateSerializer,
+    PostPinSerializer,
     CommentSerializer,
     CommentCreateUpdateSerializer,
     ReportCreateSerializer,
@@ -52,14 +54,20 @@ def post_list(request, board_type):
         posts = (
             Post.objects
             .select_related("author")
-            .filter(board_type=board_type)
+            .filter(
+                Q(is_pinned=True)
+                | Q(board_type=board_type)
+            )
             .annotate(
                 annotated_like_count=Count(
                     "likes",
                     distinct=True,
                 ),
             )
-            .order_by("-created_at")
+            .order_by(
+                "-is_pinned",
+                "-created_at",
+            )
         )
 
         if request.user.is_authenticated:
@@ -182,6 +190,39 @@ def post_detail(request, post_id):
         status=status.HTTP_204_NO_CONTENT,
     )
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def post_pin(request, post_id):
+    if not request.user.is_staff:
+        raise PermissionDenied(
+            "관리자만 게시글을 상단 고정할 수 있습니다."
+        )
+
+    post = get_object_or_404(
+        Post,
+        id=post_id,
+    )
+
+    serializer = PostPinSerializer(
+        post,
+        data=request.data,
+    )
+    serializer.is_valid(
+        raise_exception=True
+    )
+    serializer.save()
+
+    return success_response(
+        data=PostDetailSerializer(
+            post,
+            context={"request": request},
+        ).data,
+        message=(
+            "게시글이 상단에 고정되었습니다."
+            if post.is_pinned
+            else "게시글 상단 고정이 해제되었습니다."
+        ),
+    )
 
 @api_view(["GET", "POST"])
 @permission_classes([AllowAny])

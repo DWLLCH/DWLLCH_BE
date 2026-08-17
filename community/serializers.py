@@ -7,6 +7,7 @@ class PostListSerializer(serializers.ModelSerializer):
     boardType = serializers.CharField(source="board_type")
     authorName = serializers.SerializerMethodField()
     isAnonymous = serializers.BooleanField(source="is_anonymous")
+    isPinned = serializers.BooleanField(source="is_pinned", read_only=True)
     viewCount = serializers.IntegerField(source="view_count")
     commentCount = serializers.SerializerMethodField()
     likeCount = serializers.SerializerMethodField()
@@ -21,6 +22,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "title",
             "authorName",
             "isAnonymous",
+            "isPinned",
             "viewCount",
             "commentCount",
             "likeCount",
@@ -59,6 +61,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
     authorName = serializers.SerializerMethodField()
     isAnonymous = serializers.BooleanField(source="is_anonymous")
     allowNotification = serializers.BooleanField(source="allow_notification")
+    isPinned = serializers.BooleanField(source="is_pinned", read_only=True)
     viewCount = serializers.IntegerField(source="view_count")
     commentCount = serializers.SerializerMethodField()
     likeCount = serializers.SerializerMethodField()
@@ -77,6 +80,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
             "authorName",
             "isAnonymous",
             "allowNotification",
+            "isPinned",
             "viewCount",
             "commentCount",
             "likeCount",
@@ -135,6 +139,18 @@ class PostCreateUpdateSerializer(serializers.ModelSerializer):
             "allowNotification",
         ]
         read_only_fields = ["id"]
+
+
+class PostPinSerializer(serializers.ModelSerializer):
+    isPinned = serializers.BooleanField(
+        source="is_pinned"
+    )
+
+    class Meta:
+        model = Post
+        fields = [
+            "isPinned",
+        ]
 
 
 class CommentSerializer(serializers.ModelSerializer):
