@@ -154,6 +154,10 @@ class PostPinSerializer(serializers.ModelSerializer):
 
 
 class CommentSerializer(serializers.ModelSerializer):
+    authorId = serializers.IntegerField(
+        source="author_id",
+        read_only=True,
+    )
     authorName = serializers.SerializerMethodField()
     isAnonymous = serializers.BooleanField(source="is_anonymous")
     likeCount = serializers.SerializerMethodField()
@@ -175,6 +179,7 @@ class CommentSerializer(serializers.ModelSerializer):
             "id",
             "post",
             "parentId",
+            "authorId",
             "authorName",
             "content",
             "isAnonymous",
@@ -192,6 +197,39 @@ class CommentSerializer(serializers.ModelSerializer):
             "createdAt",
             "updatedAt",
         ]
+
+    def get_authorName(self, obj):
+        if obj.author is None or not obj.author.is_active:
+            return "탈퇴한 회원"
+
+        return "익명" if obj.is_anonymous else obj.author.username
+
+    def get_likeCount(self, obj):
+        if hasattr(obj, "annotated_like_count"):
+            return obj.annotated_like_count
+
+        return obj.likes.count()
+
+    def get_isLiked(self, obj):
+        if hasattr(obj, "annotated_is_liked"):
+            return obj.annotated_is_liked
+
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return False
+
+        return obj.likes.filter(
+            user=request.user
+        ).exists()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if instance.is_deleted:
+            data["content"] = "삭제된 댓글입니다."
+
+        return data
 
     def get_authorName(self, obj):
         if obj.is_deleted:
