@@ -26,14 +26,12 @@ BRIEFING_SUMMARY_PROMPT = """
 4. 3~4개의 짧은 불릿 문장으로 작성하세요. 한 문장은 40자 이내로 작성하세요.
 5. 사용자 상황에 맞는 어투로 자연스럽게 재구성하되, 사실 관계는 절대 바꾸지 마세요.
 """
-
-
 def _get_client():
-    if not settings.GEMINI_API_KEY:
-        raise GeminiRequestError("GEMINI_API_KEY가 설정되지 않았습니다.")
+    if not settings.GEMINI_BRIEFING_API_KEY:
+        raise GeminiRequestError("GEMINI_BRIEFING_API_KEY가 설정되지 않았습니다.")
 
     return genai.Client(
-        api_key=settings.GEMINI_API_KEY,
+        api_key=settings.GEMINI_BRIEFING_API_KEY,
         http_options=types.HttpOptions(timeout=settings.GEMINI_TIMEOUT_MS),
     )
 
