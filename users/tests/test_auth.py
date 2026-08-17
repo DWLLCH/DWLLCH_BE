@@ -1,5 +1,3 @@
-from datetime import date
-
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
@@ -15,19 +13,6 @@ class AuthAPITestCase(APITestCase):
             "username": "testuser",
             "password": "password123!",
             "passwordConfirm": "password123!",
-            "birthDate": "2000-01-01",
-            "protectionEndDate": "2028-12-31",
-            "region": {
-                "sido": "서울특별시",
-                "sigungu": "동대문구",
-            },
-            "protectionType": "RESIDENTIAL_CARE",
-            "housingType": "MONTHLY_RENT",
-            "housingSituation": "STABLE",
-            "livingStatus": ["EMPLOYED"],
-            "incomeType": "EARNED",
-            "supportReceived": ["SETTLEMENT_FUND"],
-            "neededHelp": ["HOUSING"],
         }
                     
     def create_test_user(self, **kwargs):
@@ -35,18 +20,6 @@ class AuthAPITestCase(APITestCase):
             "email": "test@example.com",
             "username": "testuser",
             "password": "password123!",
-            "birth_date": date(2000, 1, 1),
-            "protection_end_date": date(2028, 12, 31),
-            "sido": "서울특별시",
-            "sigungu": "동대문구",
-            "detail_address": None,
-            "protection_type": User.ProtectionType.RESIDENTIAL_CARE,
-            "housing_type": User.HousingType.MONTHLY_RENT,
-            "housing_situation": User.HousingSituation.STABLE,
-            "living_status": [User.LivingStatus.EMPLOYED],
-            "income_type": User.IncomeType.EARNED,
-            "support_received": [User.SupportType.SETTLEMENT_FUND],
-            "needed_help": [User.NeededHelp.HOUSING],
         }
 
         defaults.update(kwargs)
@@ -85,7 +58,45 @@ class AuthAPITestCase(APITestCase):
             format="json",
         )
 
-        print(response.data)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+        )
+
+        self.assertTrue(
+            User.objects.filter(
+                email="test@example.com"
+            ).exists()
+        )
+
+        user = User.objects.get(
+            email="test@example.com"
+        )
+
+        # 자립 프로필 없이 계정 생성되었는지 확인
+        self.assertIsNone(user.birth_date)
+        self.assertIsNone(user.protection_end_date)
+        self.assertIsNone(user.protection_type)
+        self.assertIsNone(user.protection_status)
+        self.assertIsNone(user.housing_type)
+        self.assertIsNone(user.housing_situation)
+        self.assertIsNone(user.income_type)
+
+        self.assertEqual(user.living_status, [])
+        self.assertEqual(user.support_received, [])
+        self.assertEqual(user.needed_help, [])
+
+        self.assertFalse(user.profile_completed)
+
+        # 회원가입 직후 인증 가능 여부
+        self.assertIn(
+            "accessToken",
+            response.data["data"],
+        )
+        self.assertIn(
+            "refreshToken",
+            response.data["data"],
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email="test@example.com").exists())
 
