@@ -35,15 +35,23 @@ class PostListSerializer(serializers.ModelSerializer):
         return obj.comments.count()
 
     def get_likeCount(self, obj):
+        if hasattr(obj, "annotated_like_count"):
+            return obj.annotated_like_count
+
         return obj.likes.count()
 
     def get_isLiked(self, obj):
+        if hasattr(obj, "annotated_is_liked"):
+            return obj.annotated_is_liked
+
         request = self.context.get("request")
 
         if not request or not request.user.is_authenticated:
             return False
 
-        return obj.likes.filter(user=request.user).exists()
+        return obj.likes.filter(
+            user=request.user
+        ).exists()
 
 
 class PostDetailSerializer(serializers.ModelSerializer):
@@ -146,15 +154,23 @@ class CommentSerializer(serializers.ModelSerializer):
         return "익명" if obj.is_anonymous else obj.author.username
 
     def get_likeCount(self, obj):
+        if hasattr(obj, "annotated_like_count"):
+            return obj.annotated_like_count
+
         return obj.likes.count()
 
     def get_isLiked(self, obj):
+        if hasattr(obj, "annotated_is_liked"):
+            return obj.annotated_is_liked
+
         request = self.context.get("request")
 
         if not request or not request.user.is_authenticated:
             return False
 
-        return obj.likes.filter(user=request.user).exists()
+        return obj.likes.filter(
+            user=request.user
+        ).exists()
 
 
 class CommentCreateUpdateSerializer(serializers.ModelSerializer):

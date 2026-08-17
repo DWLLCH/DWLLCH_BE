@@ -1,4 +1,11 @@
-from django.db.models import F
+from django.db.models import (
+    F,
+    Count,
+    Exists,
+    OuterRef,
+    Value,
+    BooleanField,
+)
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -42,12 +49,40 @@ def post_list(request, board_type):
         )
 
     if request.method == "GET":
-        posts = Post.objects.select_related("author").filter(
-            board_type=board_type
+        posts = (
+            Post.objects
+            .select_related("author")
+            .filter(board_type=board_type)
+            .annotate(
+                annotated_like_count=Count(
+                    "likes",
+                    distinct=True,
+                ),
+            )
         )
 
+        if request.user.is_authenticated:
+            posts = posts.annotate(
+                annotated_is_liked=Exists(
+                    PostLike.objects.filter(
+                        post_id=OuterRef("pk"),
+                        user=request.user,
+                    )
+                )
+            )
+        else:
+            posts = posts.annotate(
+                annotated_is_liked=Value(
+                    False,
+                    output_field=BooleanField(),
+                )
+            )
+
         paginator = CommonPageNumberPagination()
-        page = paginator.paginate_queryset(posts, request)
+        page = paginator.paginate_queryset(
+            posts,
+            request,
+        )
 
         serializer = PostListSerializer(
             page,
@@ -156,7 +191,29 @@ def comment_list(request, post_id):
     )
 
     if request.method == "GET":
-        comments = post.comments.all()
+        comments = post.comments.annotate(
+            annotated_like_count=Count(
+                "likes",
+                distinct=True,
+            ),
+        )
+
+        if request.user.is_authenticated:
+            comments = comments.annotate(
+                annotated_is_liked=Exists(
+                    CommentLike.objects.filter(
+                        comment_id=OuterRef("pk"),
+                        user=request.user,
+                    )
+                )
+            )
+        else:
+            comments = comments.annotate(
+                annotated_is_liked=Value(
+                    False,
+                    output_field=BooleanField(),
+                )
+            )
 
         serializer = CommentSerializer(
             comments,
