@@ -95,11 +95,12 @@ def home_curation(request):
 
     keywords = [k for k in keywords if k]  # 혹시 모를 빈 값/None 전부 제거
 
-    query = Q()
-    for keyword in keywords:
-        query |= Q(target_condition__icontains=keyword)
-
-    filtered_policies = list(Policy.objects.filter(query).order_by("-created_at")[:20])
+    filtered_policies = []
+    if keywords:
+        query = Q()
+        for keyword in keywords:
+            query |= Q(target_condition__icontains=keyword)
+        filtered_policies = list(Policy.objects.filter(query).order_by("-created_at")[:20])
 
     profile_incomplete = not user.needed_help
 

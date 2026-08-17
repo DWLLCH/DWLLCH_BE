@@ -28,6 +28,8 @@ class Policy(models.Model):
         max_length=50, blank=True, null=True,
         help_text="특정 시도 대상 정책이면 입력, 전국 대상이면 비워둠",
     )
+    consult_phone = models.CharField(max_length=20, blank=True, null=True, help_text="상담 전화번호")
+    consult_link = models.URLField(blank=True, null=True, help_text="상담 신청/안내 링크")
     application_start = models.DateField(null=True, blank=True)
     application_end = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
