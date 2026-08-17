@@ -59,6 +59,7 @@ def post_list(request, board_type):
                     distinct=True,
                 ),
             )
+            .order_by("-created_at")
         )
 
         if request.user.is_authenticated:
@@ -191,11 +192,15 @@ def comment_list(request, post_id):
     )
 
     if request.method == "GET":
-        comments = post.comments.annotate(
-            annotated_like_count=Count(
-                "likes",
-                distinct=True,
-            ),
+        comments = (
+            post.comments
+            .select_related("author", "parent")
+            .annotate(
+                annotated_like_count=Count(
+                    "likes",
+                    distinct=True,
+                ),
+            )
         )
 
         if request.user.is_authenticated:
@@ -240,9 +245,54 @@ def comment_list(request, post_id):
         raise_exception=True
     )
 
+    parent_id = serializer.validated_data.pop(
+        "parentId",
+        None,
+    )
+
+    parent = None
+
+    if parent_id is not None:
+        parent = get_object_or_404(
+            Comment,
+            id=parent_id,
+        )
+
+        # 다른 게시글의 댓글에 답글 작성 방지
+        if parent.post_id != post.id:
+            raise ValidationError(
+                {
+                    "parentId": (
+                        "같은 게시글의 댓글에만 "
+                        "답글을 작성할 수 있습니다."
+                    )
+                }
+            )
+
+        # 대댓글의 대댓글 방지
+        if parent.parent_id is not None:
+            raise ValidationError(
+                {
+                    "parentId": (
+                        "대댓글에는 답글을 작성할 수 없습니다."
+                    )
+                }
+            )
+
+        # 삭제된 부모 댓글에는 새 답글 작성 방지
+        if parent.is_deleted:
+            raise ValidationError(
+                {
+                    "parentId": (
+                        "삭제된 댓글에는 답글을 작성할 수 없습니다."
+                    )
+                }
+            )
+
     comment = serializer.save(
         author=request.user,
         post=post,
+        parent=parent,
     )
 
     return success_response(
@@ -269,6 +319,15 @@ def comment_detail(request, comment_id):
         )
 
     if request.method == "PATCH":
+        if comment.is_deleted:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "삭제된 댓글은 수정할 수 없습니다."
+                    )
+                }
+            )
+
         serializer = CommentCreateUpdateSerializer(
             comment,
             data=request.data,
@@ -277,6 +336,13 @@ def comment_detail(request, comment_id):
         serializer.is_valid(
             raise_exception=True
         )
+
+        # 댓글 수정 과정에서 parent 변경은 허용하지 않음
+        serializer.validated_data.pop(
+            "parentId",
+            None,
+        )
+
         serializer.save()
 
         return success_response(
@@ -287,6 +353,21 @@ def comment_detail(request, comment_id):
             message="댓글이 수정되었습니다.",
         )
 
+    # 답글이 존재하면 부모 댓글은 DB에서 지우지 않고 soft delete
+    if comment.replies.exists():
+        comment.is_deleted = True
+        comment.save(
+            update_fields=[
+                "is_deleted",
+                "updated_at",
+            ]
+        )
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT,
+        )
+
+    # 답글이 없으면 기존처럼 완전히 삭제
     comment.delete()
 
     return Response(
@@ -365,9 +446,13 @@ def post_like(request, post_id):
         )
 
         if not created:
-            raise ValidationError({
-                "detail": "이미 좋아요한 게시글입니다."
-            })
+            raise ValidationError(
+                {
+                    "detail": (
+                        "이미 좋아요한 게시글입니다."
+                    )
+                }
+            )
 
         return success_response(
             data={
@@ -407,9 +492,13 @@ def comment_like(request, comment_id):
         )
 
         if not created:
-            raise ValidationError({
-                "detail": "이미 좋아요한 댓글입니다."
-            })
+            raise ValidationError(
+                {
+                    "detail": (
+                        "이미 좋아요한 댓글입니다."
+                    )
+                }
+            )
 
         return success_response(
             data={
@@ -449,9 +538,13 @@ def post_scrap(request, post_id):
         )
 
         if not created:
-            raise ValidationError({
-                "detail": "이미 스크랩한 게시글입니다."
-            })
+            raise ValidationError(
+                {
+                    "detail": (
+                        "이미 스크랩한 게시글입니다."
+                    )
+                }
+            )
 
         return success_response(
             data=ScrapSerializer(

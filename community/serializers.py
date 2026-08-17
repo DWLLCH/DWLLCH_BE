@@ -101,10 +101,13 @@ class PostDetailSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
 
-        return obj.likes.filter(user=request.user).exists()
+        return obj.likes.filter(
+            user=request.user
+        ).exists()
 
     def get_isMine(self, obj):
         request = self.context.get("request")
+
         return bool(
             request
             and request.user.is_authenticated
@@ -113,12 +116,24 @@ class PostDetailSerializer(serializers.ModelSerializer):
 
 
 class PostCreateUpdateSerializer(serializers.ModelSerializer):
-    isAnonymous = serializers.BooleanField(source="is_anonymous", required=False)
-    allowNotification = serializers.BooleanField(source="allow_notification", required=False)
+    isAnonymous = serializers.BooleanField(
+        source="is_anonymous",
+        required=False,
+    )
+    allowNotification = serializers.BooleanField(
+        source="allow_notification",
+        required=False,
+    )
 
     class Meta:
         model = Post
-        fields = ["id", "title", "content", "isAnonymous", "allowNotification"]
+        fields = [
+            "id",
+            "title",
+            "content",
+            "isAnonymous",
+            "allowNotification",
+        ]
         read_only_fields = ["id"]
 
 
@@ -127,6 +142,14 @@ class CommentSerializer(serializers.ModelSerializer):
     isAnonymous = serializers.BooleanField(source="is_anonymous")
     likeCount = serializers.SerializerMethodField()
     isLiked = serializers.SerializerMethodField()
+    isDeleted = serializers.BooleanField(
+        source="is_deleted",
+        read_only=True,
+    )
+    parentId = serializers.IntegerField(
+        source="parent_id",
+        read_only=True,
+    )
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
 
@@ -135,9 +158,11 @@ class CommentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "post",
+            "parentId",
             "authorName",
             "content",
             "isAnonymous",
+            "isDeleted",
             "likeCount",
             "isLiked",
             "createdAt",
@@ -146,11 +171,16 @@ class CommentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "post",
+            "parentId",
+            "isDeleted",
             "createdAt",
             "updatedAt",
         ]
 
     def get_authorName(self, obj):
+        if obj.is_deleted:
+            return ""
+
         return "익명" if obj.is_anonymous else obj.author.username
 
     def get_likeCount(self, obj):
@@ -160,6 +190,9 @@ class CommentSerializer(serializers.ModelSerializer):
         return obj.likes.count()
 
     def get_isLiked(self, obj):
+        if obj.is_deleted:
+            return False
+
         if hasattr(obj, "annotated_is_liked"):
             return obj.annotated_is_liked
 
@@ -172,13 +205,36 @@ class CommentSerializer(serializers.ModelSerializer):
             user=request.user
         ).exists()
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if instance.is_deleted:
+            data["content"] = "삭제된 댓글입니다."
+            data["authorName"] = ""
+            data["isAnonymous"] = False
+            data["isLiked"] = False
+
+        return data
+
 
 class CommentCreateUpdateSerializer(serializers.ModelSerializer):
-    isAnonymous = serializers.BooleanField(source="is_anonymous", required=False)
+    isAnonymous = serializers.BooleanField(
+        source="is_anonymous",
+        required=False,
+    )
+    parentId = serializers.IntegerField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = Comment
-        fields = ["content", "isAnonymous"]
+        fields = [
+            "content",
+            "isAnonymous",
+            "parentId",
+        ]
 
 
 class ReportCreateSerializer(serializers.ModelSerializer):
@@ -188,11 +244,28 @@ class ReportCreateSerializer(serializers.ModelSerializer):
 
 
 class ScrapSerializer(serializers.ModelSerializer):
-    postId = serializers.IntegerField(source="post.id", read_only=True)
-    postTitle = serializers.CharField(source="post.title", read_only=True)
-    boardType = serializers.CharField(source="post.board_type", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at")
+    postId = serializers.IntegerField(
+        source="post.id",
+        read_only=True,
+    )
+    postTitle = serializers.CharField(
+        source="post.title",
+        read_only=True,
+    )
+    boardType = serializers.CharField(
+        source="post.board_type",
+        read_only=True,
+    )
+    createdAt = serializers.DateTimeField(
+        source="created_at"
+    )
 
     class Meta:
         model = Scrap
-        fields = ["id", "postId", "postTitle", "boardType", "createdAt"]
+        fields = [
+            "id",
+            "postId",
+            "postTitle",
+            "boardType",
+            "createdAt",
+        ]
