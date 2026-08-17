@@ -947,20 +947,12 @@ class CommunityLatestPostTest(APITestCase):
             is_pinned=True,
         )
 
-        response = self.client.get(
-            self.url
-        )
+        response = self.client.get(self.url)
 
         posts = response.data["content"]
 
-        self.assertEqual(
-            posts[0]["id"],
-            pinned_post.id,
-        )
-
-        self.assertTrue(
-            posts[0]["isPinned"]
-        )
+        self.assertEqual(posts[0]["id"], pinned_post.id,)
+        self.assertTrue(posts[0]["isPinned"])
 
     def test_latest_posts_pagination(self):
         for index in range(25):
@@ -971,20 +963,46 @@ class CommunityLatestPostTest(APITestCase):
                 content="내용",
             )
 
-        response = self.client.get(
-            f"{self.url}?page=0&size=20"
+        response = self.client.get(f"{self.url}?page=0&size=20")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK,)
+
+        self.assertEqual(len(response.data["content"]), 20,)
+
+        self.assertTrue(response.data["hasNext"])
+
+    def test_latest_posts_stable_order_with_same_created_at(self):
+        post1 = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="동일 시간 글 1",
+            content="내용",
         )
+
+        post2 = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="동일 시간 글 2",
+            content="내용",
+        )
+
+        same_time = post1.created_at
+
+        Post.objects.filter(id__in=[post1.id, post2.id]).update(created_at=same_time)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK,)
+
+        posts = response.data["content"]
+
+        matching_ids = [
+            post["id"]
+            for post in posts
+            if post["id"] in [post1.id, post2.id]
+        ]
 
         self.assertEqual(
-            response.status_code,
-            status.HTTP_200_OK,
-        )
-
-        self.assertEqual(
-            len(response.data["content"]),
-            20,
-        )
-
-        self.assertTrue(
-            response.data["hasNext"]
+            matching_ids,
+            sorted([post1.id, post2.id], reverse=True,),
         )

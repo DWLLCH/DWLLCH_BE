@@ -67,6 +67,7 @@ def post_list(request, board_type):
             .order_by(
                 "-is_pinned",
                 "-created_at",
+                "-id",
             )
         )
 
@@ -145,6 +146,7 @@ def latest_post_list(request):
         .order_by(
             "-is_pinned",
             "-created_at",
+            "-id",
         )
     )
 
