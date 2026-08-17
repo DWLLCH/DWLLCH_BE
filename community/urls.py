@@ -14,4 +14,5 @@ urlpatterns = [
     path("community/posts/<int:post_id>/like", views.post_like, name="post-like"),
     path("community/comments/<int:comment_id>/like", views.comment_like, name="comment-like"),
     path("community/posts/<int:post_id>/pin", views.post_pin,name="post-pin"),
+    path("community/posts", views.latest_post_list, name="latest-post-list"),
 ]
