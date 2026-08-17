@@ -2,9 +2,9 @@ from rest_framework import serializers
 
 from .models import Policy
 
-
 class PolicyListSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
+    regionSido = serializers.CharField(source="region_sido", allow_null=True)
 
     class Meta:
         model = Policy
@@ -14,6 +14,7 @@ class PolicyListSerializer(serializers.ModelSerializer):
             "summary",
             "category",
             "organization",
+            "regionSido",
             "applicationEnd",
         ]
 
@@ -23,6 +24,7 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
     requiredDocuments = serializers.CharField(source="required_documents")
     consultPhone = serializers.CharField(source="consult_phone", allow_null=True)
     consultLink = serializers.URLField(source="consult_link", allow_null=True)
+    regionSido = serializers.CharField(source="region_sido", allow_null=True)
     applicationStart = serializers.DateField(source="application_start", allow_null=True)
     applicationEnd = serializers.DateField(source="application_end", allow_null=True)
     createdAt = serializers.DateTimeField(source="created_at")
@@ -40,6 +42,7 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "requiredDocuments",
             "category",
             "organization",
+            "regionSido",
             "consultPhone",
             "consultLink",
             "applicationStart",
@@ -47,6 +50,7 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "createdAt",
             "updatedAt",
         ]
+
 
 
 class SimilarPolicySerializer(serializers.ModelSerializer):
