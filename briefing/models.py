@@ -27,9 +27,9 @@ class Briefing(models.Model):
 
 def compute_profile_signature(user):
     raw = "|".join([
-        ",".join(sorted(user.living_status)),
-        ",".join(sorted(user.needed_help)),
-        user.housing_situation,
+        ",".join(sorted(user.living_status or [])),
+        ",".join(sorted(user.needed_help or [])),
+        user.housing_situation or "",
     ])
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
