@@ -18,6 +18,7 @@ from .serializers import (
     ReissueSerializer,
     PasswordChangeSerializer,
     AccountDeleteSerializer,
+    EmailChangeSerializer,
 )
 
 def issue_tokens(user):      # DB에 refresh token 저장
@@ -298,6 +299,60 @@ class LogoutView(APIView):
         return Response(
             status=status.HTTP_204_NO_CONTENT
         )
+
+
+class EmailChangeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = EmailChangeSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": "COMMON_400_INVALID_INPUT",
+                    "message": "잘못된 요청입니다.",
+                    "data": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_password = serializer.validated_data["currentPassword"]
+        new_email = serializer.validated_data["newEmail"]
+
+        user = request.user
+
+        if not user.check_password(current_password):
+            return Response(
+                {
+                    "success": False,
+                    "code": "AUTH_400_CURRENT_PASSWORD_MISMATCH",
+                    "message": "현재 비밀번호가 일치하지 않습니다.",
+                    "data": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.email = new_email
+        user.save(update_fields=["email"])
+
+        return Response(
+            {
+                "success": True,
+                "code": "SUCCESS",
+                "message": "이메일이 변경되었습니다.",
+                "data": {
+                    "email": user.email,
+                    "changedAt": timezone.now(),
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 class PasswordChangeView(APIView):
     permission_classes = [IsAuthenticated]

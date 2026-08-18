@@ -9,6 +9,7 @@ from .views import (
     ReissueView,
     PasswordChangeView,
     AccountDeleteView,
+    EmailChangeView,
 )
 
 urlpatterns = [
@@ -20,4 +21,5 @@ urlpatterns = [
     path("auth/reissue", ReissueView.as_view(), name="reissue"),
     path("auth/password", PasswordChangeView.as_view(), name="password-change"),
     path("auth/account", AccountDeleteView.as_view(), name="account-delete"),
+    path("auth/email", EmailChangeView.as_view(), name="email-change"),
 ]
