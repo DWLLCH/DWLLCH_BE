@@ -39,6 +39,7 @@ from .serializers import (
     PostPinSerializer,
     CommentSerializer,
     CommentCreateUpdateSerializer,
+    MyCommentSerializer,
     ReportCreateSerializer,
     ScrapSerializer,
     PollSerializer,
@@ -976,14 +977,21 @@ def my_posts(request):
     serializer = PostListSerializer(page, many=True, context={"request": request})
     return paginator.get_paginated_response(serializer.data)
 
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def my_comments(request):
-    comments = Comment.objects.filter(author=request.user).order_by("-created_at")
+    comments = (
+        Comment.objects
+        .filter(author=request.user)
+        .select_related("post", "author")
+        .order_by("-created_at", "-id")
+    )
+
     paginator = CommonPageNumberPagination()
     page = paginator.paginate_queryset(comments, request)
-    serializer = CommentSerializer(page, many=True, context={"request": request})
+
+    serializer = MyCommentSerializer(page, many=True)
+
     return paginator.get_paginated_response(serializer.data)
 
 

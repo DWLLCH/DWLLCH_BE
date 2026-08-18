@@ -1475,3 +1475,163 @@ class CommunityPostPatchTest(APITestCase):
             self.post.images.count(),
             5,
         )
+
+class MyCommentListTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="mycomment@example.com",
+            username="mycommentuser",
+            password="Test1234!",
+        )
+
+        self.other_user = User.objects.create_user(
+            email="othercomment@example.com",
+            username="othercommentuser",
+            password="Test1234!",
+        )
+
+        self.post = Post.objects.create(
+            board_type=Post.BoardType.WORRY,
+            author=self.other_user,
+            title="주변에 의지할 어른이 없다는 게",
+            content="게시글 내용",
+        )
+
+        self.other_post = Post.objects.create(
+            board_type=Post.BoardType.TIP,
+            author=self.other_user,
+            title="국민취업지원제도 후기",
+            content="게시글 내용",
+        )
+
+        self.comment = Comment.objects.create(
+            post=self.post,
+            author=self.user,
+            content="저도 비슷한 시기가 있었어요.",
+        )
+
+        self.second_comment = Comment.objects.create(
+            post=self.other_post,
+            author=self.user,
+            content="좋은 정보 감사합니다.",
+        )
+
+        Comment.objects.create(
+            post=self.post,
+            author=self.other_user,
+            content="다른 사용자의 댓글",
+        )
+
+        refresh = RefreshToken.for_user(self.user)
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+        self.url = "/community/comments/mine"
+
+    def test_my_comments_success(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        comments = response.data["content"]
+
+        self.assertEqual(
+            len(comments),
+            2,
+        )
+
+    def test_my_comments_include_post_info(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        comments = response.data["content"]
+
+        target = next(
+            comment
+            for comment in comments
+            if comment["id"] == self.comment.id
+        )
+
+        self.assertEqual(
+            target["content"],
+            "저도 비슷한 시기가 있었어요.",
+        )
+
+        self.assertEqual(
+            target["postId"],
+            self.post.id,
+        )
+
+        self.assertEqual(
+            target["postTitle"],
+            "주변에 의지할 어른이 없다는 게",
+        )
+
+        self.assertEqual(
+            target["boardType"],
+            Post.BoardType.WORRY,
+        )
+
+        self.assertIn(
+            "createdAt",
+            target,
+        )
+
+    def test_my_comments_exclude_other_users_comments(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        comments = response.data["content"]
+
+        contents = [
+            comment["content"]
+            for comment in comments
+        ]
+
+        self.assertNotIn(
+            "다른 사용자의 댓글",
+            contents,
+        )
+
+    def test_my_comments_ordered_by_latest(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        comments = response.data["content"]
+
+        self.assertEqual(
+            comments[0]["id"],
+            self.second_comment.id,
+        )
+
+        self.assertEqual(
+            comments[1]["id"],
+            self.comment.id,
+        )
+
+    def test_my_comments_unauthenticated_fail(self):
+        self.client.credentials()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
