@@ -63,6 +63,8 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end", allow_null=True)
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
+    matchLevel = serializers.SerializerMethodField()
+    matchReason = serializers.SerializerMethodField()
 
     class Meta:
         model = Policy
@@ -83,6 +85,8 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "applicationEnd",
             "createdAt",
             "updatedAt",
+            "matchLevel",
+            "matchReason",
         ]
 
     def get_matchLevel(self, obj):
