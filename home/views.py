@@ -20,7 +20,7 @@ from .serializers import (
     SimilarPolicySerializer,
     PolicyChatbotQuerySerializer,
 )
-from .services import get_policy_chatbot_answer, match_policies_by_condition, GeminiRequestError
+from .services import get_policy_chatbot_answer, match_policies_by_condition, assess_policy_matches, GeminiRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +29,65 @@ User = get_user_model()
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_list(request):
-    queryset = Policy.objects.all().order_by("-created_at")
+    queryset = Policy.objects.all().order_by(
+        "-created_at",
+        "-id",
+    )
 
     category = request.query_params.get("category")
     if category:
-        queryset = queryset.filter(category=category)
+        queryset = queryset.filter(
+            category=category
+        )
 
     keyword = request.query_params.get("keyword")
     if keyword:
-        queryset = queryset.filter(title__icontains=keyword)
+        queryset = queryset.filter(
+            title__icontains=keyword
+        )
 
     paginator = CommonPageNumberPagination()
-    page = paginator.paginate_queryset(queryset, request)
-    serializer = PolicyListSerializer(page, many=True)
-    return paginator.get_paginated_response(serializer.data)
+    page = paginator.paginate_queryset(
+        queryset,
+        request,
+    )
 
+    match_map = {}
+
+    if (
+        request.user.is_authenticated
+        and request.user.profile_completed
+        and page
+    ):
+        try:
+            result = assess_policy_matches(
+                page,
+                request.user,
+            )
+
+            match_map = {
+                match.policy_id: match
+                for match in result.matches
+            }
+
+        except GeminiRequestError:
+            logger.exception(
+                "Gemini policy match assessment failed: "
+                "user_id=%s",
+                request.user.id,
+            )
+
+    serializer = PolicyListSerializer(
+        page,
+        many=True,
+        context={
+            "match_map": match_map,
+        },
+    )
+
+    return paginator.get_paginated_response(
+        serializer.data
+    )
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
