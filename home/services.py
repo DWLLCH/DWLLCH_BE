@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 from chat.models import RiskCheckMessage
 
 from .models import Policy
+from typing import Literal
 
 
 class ChatbotAnswerResult(BaseModel):
@@ -90,6 +91,17 @@ class ConditionMatchResult(BaseModel):
     matches: list[MatchedPolicy] = Field(default_factory=list)
 
 
+class PolicyMatchAssessment(BaseModel):
+    policy_id: int
+    match_level: Literal["HIGH", "MEDIUM", "LOW"]
+    match_reason: str
+
+
+class PolicyMatchAssessmentResult(BaseModel):
+    matches: list[PolicyMatchAssessment] = Field(
+        default_factory=list
+    )
+
 class GeminiRequestError(Exception):
     """Gemini API 또는 네트워크 호출 실패."""
 
@@ -107,6 +119,25 @@ CONDITION_MATCH_PROMPT = """
 6. 최대 5개까지만 추천하세요.
 7. "최근 챗봇 상담에서 자주 물어본 주제"가 있다면, 관련 정책의 추천 우선순위를 높이고 이유에 자연스럽게 반영하세요.
 """
+
+POLICY_MATCH_ASSESSMENT_PROMPT = """
+당신은 자립준비청년의 상황과 지원 정책의 예상 적합도를 평가합니다.
+
+다음 규칙을 반드시 지키세요.
+
+1. 아래 "정책 목록"에 있는 모든 정책을 평가하세요.
+2. 정책 id는 반드시 정책 목록에 있는 id 그대로 사용하세요.
+3. 정책 내용과 사용자 정보를 임의로 만들어내지 마세요.
+4. 예상 적합도는 HIGH, MEDIUM, LOW 중 하나만 사용하세요.
+5. HIGH는 현재 사용자 상황과 정책 조건이 매우 잘 맞는 경우입니다.
+6. MEDIUM은 일부 조건은 맞지만 추가 확인이 필요한 경우입니다.
+7. LOW는 현재 사용자 정보 기준으로 적합도가 낮거나 관련성이 적은 경우입니다.
+8. 적합도 판단 이유는 한 문장, 40자 이내로 작성하세요.
+9. 사용자 정보가 부족한 경우 확정적으로 판단하지 말고 MEDIUM 또는 LOW로 평가하세요.
+10. 입력받은 정책은 빠짐없이 모두 반환하세요.
+"""
+
+
 
 CHAT_TOPIC_KEYWORDS = {
     "HOUSING": ["주거", "월세", "전세", "집", "임대"],
@@ -157,7 +188,7 @@ def match_policies_by_condition(policies, user):
     client = _get_client()
 
     policy_lines = "\n".join(
-        f"- id={p.id}, 제목={p.title}, 카테고리={p.category}, 자격요건={p.eligibility}"
+        f"- id={p.id}, 제목={p.title}, 카테고리={p.category}, 자격요건={p.eligibility}, 대상조건={p.target_condition}, 지역={p.region_sido or '전국'}"
         for p in policies
     )
 
@@ -165,9 +196,13 @@ def match_policies_by_condition(policies, user):
     chat_topics_text = ", ".join(chat_topics) if chat_topics else "없음"
 
     profile_text = (
+        f"거주 지역: {user.sido or '정보 없음'} {user.sigungu or ''}\n"
+        f"보호 상태: {user.protection_status or '정보 없음'}\n"
+        f"보호 종료일: {user.protection_end_date or '정보 없음'}\n"
         f"생활 형태: {', '.join(user.living_status) or '정보 없음'}\n"
         f"필요한 도움: {', '.join(user.needed_help) or '정보 없음'}\n"
         f"주거 상황: {user.housing_situation or '정보 없음'}\n"
+        f"소득 형태: {user.income_type or '정보 없음'}\n"
         f"최근 챗봇 상담에서 자주 물어본 주제: {chat_topics_text}"
     )
 
@@ -196,4 +231,89 @@ def match_policies_by_condition(policies, user):
     try:
         return _parse_response(response, ConditionMatchResult)
     except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc
+
+
+def assess_policy_matches(policies, user):
+    if not policies:
+        return PolicyMatchAssessmentResult(
+            matches=[]
+        )
+
+    client = _get_client()
+
+    policy_lines = "\n".join(
+        (
+            f"- id={p.id}, "
+            f"제목={p.title}, "
+            f"카테고리={p.category}, "
+            f"자격요건={p.eligibility}, "
+            f"대상조건={p.target_condition}, "
+            f"지역={p.region_sido or '전국'}"
+        )
+        for p in policies
+    )
+
+    chat_topics = get_frequent_chat_topics(user)
+    chat_topics_text = (
+        ", ".join(chat_topics)
+        if chat_topics
+        else "없음"
+    )
+
+    profile_text = (
+        f"거주 지역: "
+        f"{user.sido or '정보 없음'} "
+        f"{user.sigungu or ''}\n"
+        f"보호 상태: "
+        f"{user.protection_status or '정보 없음'}\n"
+        f"보호 종료일: "
+        f"{user.protection_end_date or '정보 없음'}\n"
+        f"생활 형태: "
+        f"{', '.join(user.living_status) or '정보 없음'}\n"
+        f"필요한 도움: "
+        f"{', '.join(user.needed_help) or '정보 없음'}\n"
+        f"주거 상황: "
+        f"{user.housing_situation or '정보 없음'}\n"
+        f"소득 형태: "
+        f"{user.income_type or '정보 없음'}\n"
+        f"최근 챗봇 상담에서 자주 물어본 주제: "
+        f"{chat_topics_text}"
+    )
+
+    prompt = f"""
+{POLICY_MATCH_ASSESSMENT_PROMPT}
+
+정책 목록:
+{policy_lines}
+
+사용자 상황:
+{profile_text}
+"""
+
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=PolicyMatchAssessmentResult,
+            ),
+        )
+    except (
+        genai_errors.APIError,
+        httpx.HTTPError,
+        TimeoutError,
+    ) as exc:
+        raise GeminiRequestError from exc
+
+    try:
+        return _parse_response(
+            response,
+            PolicyMatchAssessmentResult,
+        )
+    except (
+        ValidationError,
+        json.JSONDecodeError,
+    ) as exc:
         raise GeminiRequestError from exc
