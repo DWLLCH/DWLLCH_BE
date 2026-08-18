@@ -13,12 +13,18 @@ from briefing.models import compute_profile_signature
 from common.pagination import CommonPageNumberPagination
 from common.responses import success_response
 
-from .models import Policy, CurationMatchCache, compute_policy_ids_hash
+from .models import (
+    Policy,
+    PolicyScrap,
+    CurationMatchCache,
+    compute_policy_ids_hash,
+)
 from .serializers import (
     PolicyListSerializer,
     PolicyDetailSerializer,
     SimilarPolicySerializer,
     PolicyChatbotQuerySerializer,
+    PolicyScrapSerializer,
 )
 from .services import get_policy_chatbot_answer, match_policies_by_condition, assess_policy_matches, GeminiRequestError
 
@@ -279,3 +285,46 @@ def policy_chatbot_query(request):
         data={"answer": result.answer, "answerable": result.answerable},
         message="정책 관련 질문에 답변했습니다.",
     )
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def policy_scrap(request, policy_id):
+    policy = get_object_or_404(Policy, id=policy_id)
+
+    if request.method == "POST":
+        scrap, created = PolicyScrap.objects.get_or_create(user=request.user, policy=policy)
+
+        if not created:
+            raise ValidationError({"detail": "이미 스크랩한 정책입니다."})
+
+        return success_response(
+            data=PolicyScrapSerializer(scrap).data,
+            message="정책이 스크랩되었습니다.",
+            status_code=status.HTTP_201_CREATED,
+        )
+
+    scrap = get_object_or_404(PolicyScrap, user=request.user, policy=policy)
+
+    scrap.delete()
+
+    return Response(
+        status=status.HTTP_204_NO_CONTENT,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def policy_scrap_list(request):
+    scraps = (
+        PolicyScrap.objects
+        .filter(user=request.user)
+        .select_related("policy")
+        .order_by("-created_at", "-id")
+    )
+
+    paginator = CommonPageNumberPagination()
+    page = paginator.paginate_queryset(scraps, request)
+
+    serializer = PolicyScrapSerializer(page, many=True)
+
+    return paginator.get_paginated_response(serializer.data)
