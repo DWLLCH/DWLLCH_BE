@@ -9,6 +9,7 @@ from django.db.models import (
     Value,
     BooleanField,
 )
+from django.db import transaction
 from django.http import QueryDict
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -81,6 +82,31 @@ def parse_post_request_data(request):
         raise ValidationError({"poll": "poll은 올바른 JSON 문자열이어야 합니다."})
 
     return data
+
+
+def apply_poll_update(post, poll_data):
+    """게시글의 설문을 poll_data로 교체한다. 이미 투표가 있으면 수정을 막고,
+    설문이 없던 게시글이면 새로 만든다."""
+    existing_poll = getattr(post, "poll", None)
+
+    if existing_poll:
+        if PollVote.objects.filter(option__poll=existing_poll).exists():
+            raise ValidationError({"poll": "투표가 진행된 설문은 수정할 수 없습니다."})
+
+        existing_poll.question = poll_data["question"]
+        existing_poll.allow_multiple = poll_data.get("allow_multiple", False)
+        existing_poll.save()
+        existing_poll.options.all().delete()
+        poll = existing_poll
+    else:
+        poll = Poll.objects.create(
+            post=post,
+            question=poll_data["question"],
+            allow_multiple=poll_data.get("allow_multiple", False),
+        )
+
+    for order, option_data in enumerate(poll_data["options"]):
+        PollOption.objects.create(poll=poll, text=option_data["text"], order=order)
 
 
 @api_view(["GET", "POST"])
@@ -287,13 +313,20 @@ def post_detail(request, post_id):
     if request.method == "PATCH":
         serializer = PostCreateUpdateSerializer(
             post,
-            data=request.data,
+            data=parse_post_request_data(request),
             partial=True,
         )
         serializer.is_valid(
             raise_exception=True
         )
-        serializer.save()
+
+        poll_provided = "poll" in serializer.validated_data
+        poll_data = serializer.validated_data.pop("poll", None)
+
+        with transaction.atomic():
+            serializer.save()
+            if poll_provided:
+                apply_poll_update(post, poll_data)
 
         return success_response(
             data=PostDetailSerializer(

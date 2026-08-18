@@ -1,3 +1,6 @@
+import json
+
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 # Create your tests here.
@@ -6,7 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Post, Comment, PostLike, CommentLike
+from .models import Post, Comment, PostLike, CommentLike, Poll, PollOption, PollVote
 
 
 User = get_user_model()
@@ -1006,3 +1009,159 @@ class CommunityLatestPostTest(APITestCase):
             matching_ids,
             sorted([post1.id, post2.id], reverse=True,),
         )
+
+
+class CommunityPollPatchTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="poll-author@example.com",
+            username="pollauthor",
+            password="Test1234!",
+        )
+
+        self.voter = User.objects.create_user(
+            email="poll-voter@example.com",
+            username="pollvoter",
+            password="Test1234!",
+        )
+
+        self.post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="설문 게시글",
+            content="내용",
+        )
+
+        self.poll = Poll.objects.create(
+            post=self.post,
+            question="원래 질문",
+            allow_multiple=False,
+        )
+
+        self.option_a = PollOption.objects.create(poll=self.poll, text="A", order=0)
+        self.option_b = PollOption.objects.create(poll=self.poll, text="B", order=1)
+
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+        self.url = f"/community/posts/{self.post.id}"
+
+    def test_poll_patch_without_votes_succeeds(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "poll": {
+                    "question": "새 질문",
+                    "allowMultiple": True,
+                    "options": [{"text": "X"}, {"text": "Y"}, {"text": "Z"}],
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.poll.refresh_from_db()
+        self.assertEqual(self.poll.question, "새 질문")
+        self.assertTrue(self.poll.allow_multiple)
+
+        option_texts = list(
+            self.poll.options.order_by("order").values_list("text", flat=True)
+        )
+        self.assertEqual(option_texts, ["X", "Y", "Z"])
+
+    def test_poll_patch_with_votes_fails_and_keeps_original(self):
+        PollVote.objects.create(option=self.option_a, user=self.voter)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "title": "제목만 바꾸려는 시도",
+                "poll": {
+                    "question": "바뀌면 안 되는 질문",
+                    "options": [{"text": "X"}, {"text": "Y"}],
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.post.refresh_from_db()
+        self.poll.refresh_from_db()
+
+        self.assertNotEqual(self.post.title, "제목만 바꾸려는 시도")
+        self.assertEqual(self.poll.question, "원래 질문")
+
+        option_texts = list(
+            self.poll.options.order_by("order").values_list("text", flat=True)
+        )
+        self.assertEqual(option_texts, ["A", "B"])
+
+    def test_poll_patch_adds_poll_to_post_without_one(self):
+        plain_post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="설문 없는 글",
+            content="내용",
+        )
+
+        response = self.client.patch(
+            f"/community/posts/{plain_post.id}",
+            {
+                "poll": {
+                    "question": "새로 추가된 설문",
+                    "options": [{"text": "1번"}, {"text": "2번"}],
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        plain_post.refresh_from_db()
+        self.assertIsNotNone(getattr(plain_post, "poll", None))
+        self.assertEqual(plain_post.poll.question, "새로 추가된 설문")
+
+    def test_poll_patch_without_poll_field_leaves_poll_untouched(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "title": "제목만 수정",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.post.refresh_from_db()
+        self.poll.refresh_from_db()
+
+        self.assertEqual(self.post.title, "제목만 수정")
+        self.assertEqual(self.poll.question, "원래 질문")
+
+    def test_poll_patch_multipart_json_string_parsed(self):
+        image = SimpleUploadedFile(
+            "poll.jpg", b"fake-image-bytes", content_type="image/jpeg"
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "images": [image],
+                "poll": json.dumps(
+                    {
+                        "question": "멀티파트 질문",
+                        "options": [{"text": "가"}, {"text": "나"}],
+                    }
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.poll.refresh_from_db()
+        self.assertEqual(self.poll.question, "멀티파트 질문")
