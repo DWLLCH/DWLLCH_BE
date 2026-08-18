@@ -9,8 +9,9 @@ from django.db.models import (
 )
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
@@ -24,6 +25,7 @@ from .models import (
     Scrap,
     PostLike,
     CommentLike,
+    PostImage,
 )
 from .serializers import (
     PostListSerializer,
@@ -36,8 +38,24 @@ from .serializers import (
     ScrapSerializer,
 )
 
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_IMAGE_COUNT = 5
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
+
+
+def validate_image_file(image_file):
+    if image_file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise ValidationError(
+            {"images": f"{image_file.name}: JPEG, PNG, WEBP 형식만 업로드 가능합니다."}
+        )
+    if image_file.size > MAX_IMAGE_SIZE:
+        raise ValidationError(
+            {"images": f"{image_file.name}: 이미지 크기는 5MB 이하여야 합니다."}
+        )
+
 
 @api_view(["GET", "POST"])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 @permission_classes([AllowAny])
 def post_list(request, board_type):
     if board_type not in Post.BoardType.values:
@@ -116,10 +134,23 @@ def post_list(request, board_type):
         raise_exception=True
     )
 
+    images = request.FILES.getlist("images")
+
+    if len(images) > MAX_IMAGE_COUNT:
+        raise ValidationError(
+            {"images": f"이미지는 최대 {MAX_IMAGE_COUNT}장까지 업로드 가능합니다."}
+        )
+
+    for image_file in images:
+        validate_image_file(image_file)
+
     post = serializer.save(
         author=request.user,
         board_type=board_type,
     )
+
+    for order, image_file in enumerate(images):
+        PostImage.objects.create(post=post, image=image_file, order=order)
 
     return success_response(
         data=PostDetailSerializer(
@@ -185,6 +216,7 @@ def latest_post_list(request):
 
 
 @api_view(["GET", "PATCH", "DELETE"])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 @permission_classes([AllowAny])
 def post_detail(request, post_id):
     post = get_object_or_404(
@@ -353,7 +385,6 @@ def comment_list(request, post_id):
             id=parent_id,
         )
 
-        # 다른 게시글의 댓글에 답글 작성 방지
         if parent.post_id != post.id:
             raise ValidationError(
                 {
@@ -364,7 +395,6 @@ def comment_list(request, post_id):
                 }
             )
 
-        # 대댓글의 대댓글 방지
         if parent.parent_id is not None:
             raise ValidationError(
                 {
@@ -374,7 +404,6 @@ def comment_list(request, post_id):
                 }
             )
 
-        # 삭제된 부모 댓글에는 새 답글 작성 방지
         if parent.is_deleted:
             raise ValidationError(
                 {
@@ -432,7 +461,6 @@ def comment_detail(request, comment_id):
             raise_exception=True
         )
 
-        # 댓글 수정 과정에서 parent 변경은 허용하지 않음
         serializer.validated_data.pop(
             "parentId",
             None,
@@ -448,7 +476,6 @@ def comment_detail(request, comment_id):
             message="댓글이 수정되었습니다.",
         )
 
-    # 답글이 존재하면 부모 댓글은 DB에서 지우지 않고 soft delete
     if comment.replies.exists():
         comment.is_deleted = True
         comment.save(
@@ -462,7 +489,6 @@ def comment_detail(request, comment_id):
             status=status.HTTP_204_NO_CONTENT,
         )
 
-    # 답글이 없으면 기존처럼 완전히 삭제
     comment.delete()
 
     return Response(
