@@ -7,7 +7,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from users.models import User
-from home.models import Policy
+from home.models import Policy, PolicyScrap
 from home.services import (
     PolicyMatchAssessment,
     PolicyMatchAssessmentResult,
@@ -275,3 +275,144 @@ class PolicyListMatchTest(APITestCase):
         response = self.client.get("/policies?sort=invalid")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+class PolicyScrapTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="scrap@example.com",
+            username="scrapuser",
+            password="Test1234!",
+        )
+
+        self.other_user = User.objects.create_user(
+            email="other@example.com",
+            username="otheruser",
+            password="Test1234!",
+        )
+
+        self.policy = Policy.objects.create(
+            title="청년 주거 지원",
+            summary="주거 지원 정책",
+            content="정책 내용",
+            eligibility="자립준비청년",
+            application_method="온라인 신청",
+            required_documents="신분증",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="테스트 기관",
+        )
+
+        self.other_policy = Policy.objects.create(
+            title="취업 지원",
+            summary="취업 지원 정책",
+            content="정책 내용",
+            eligibility="자립준비청년",
+            application_method="온라인 신청",
+            required_documents="신분증",
+            category=Policy.Category.EMPLOYMENT,
+            target_condition="취업",
+            organization="테스트 기관",
+        )
+
+        refresh = RefreshToken.for_user(self.user)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+
+    def test_policy_scrap_create_success(self):
+        response = self.client.post(f"/policies/{self.policy.id}/scrap")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.assertTrue(
+            PolicyScrap.objects.filter(
+                user=self.user,
+                policy=self.policy,
+            ).exists()
+        )
+
+        self.assertEqual(response.data["data"]["policyId"], self.policy.id)
+        self.assertEqual(response.data["data"]["policyTitle"], self.policy.title)
+        self.assertEqual(response.data["data"]["category"], self.policy.category)
+        self.assertIn("applicationEnd", response.data["data"])
+
+    def test_policy_scrap_duplicate_fail(self):
+        PolicyScrap.objects.create(user=self.user, policy=self.policy)
+
+        response = self.client.post(f"/policies/{self.policy.id}/scrap")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.assertEqual(
+            PolicyScrap.objects.filter(
+                user=self.user,
+                policy=self.policy,
+            ).count(),
+            1,
+        )
+
+    def test_policy_scrap_delete_success(self):
+        PolicyScrap.objects.create(user=self.user, policy=self.policy)
+
+        response = self.client.delete(f"/policies/{self.policy.id}/scrap")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.assertFalse(
+            PolicyScrap.objects.filter(
+                user=self.user,
+                policy=self.policy,
+            ).exists()
+        )
+
+    def test_policy_scrap_delete_not_found(self):
+        response = self.client.delete(f"/policies/{self.policy.id}/scrap")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_policy_scrap_list_success(self):
+        PolicyScrap.objects.create(user=self.user, policy=self.policy)
+        PolicyScrap.objects.create(user=self.user, policy=self.other_policy)
+
+        response = self.client.get("/policies/scraps")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["content"]), 2)
+
+        first = response.data["content"][0]
+
+        self.assertIn("policyId", first)
+        self.assertIn("policyTitle", first)
+        self.assertIn("category", first)
+        self.assertIn("applicationEnd", first)
+        self.assertIn("createdAt", first)
+
+    def test_policy_scrap_list_excludes_other_user(self):
+        PolicyScrap.objects.create(user=self.user, policy=self.policy)
+
+        PolicyScrap.objects.create(user=self.other_user, policy=self.other_policy)
+
+        response = self.client.get("/policies/scraps")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        policy_ids = [
+            item["policyId"]
+            for item in response.data["content"]
+        ]
+
+        self.assertIn(self.policy.id, policy_ids)
+        self.assertNotIn(self.other_policy.id,policy_ids)
+
+    def test_policy_scrap_unauthenticated_fail(self):
+        self.client.credentials()
+
+        response = self.client.post(f"/policies/{self.policy.id}/scrap")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_policy_scrap_list_unauthenticated_fail(self):
+        self.client.credentials()
+
+        response = self.client.get("/policies/scraps")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

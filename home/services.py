@@ -98,9 +98,7 @@ class PolicyMatchAssessment(BaseModel):
 
 
 class PolicyMatchAssessmentResult(BaseModel):
-    matches: list[PolicyMatchAssessment] = Field(
-        default_factory=list
-    )
+    matches: list[PolicyMatchAssessment] = Field(default_factory=list)
 
 class GeminiRequestError(Exception):
     """Gemini API 또는 네트워크 호출 실패."""
@@ -236,9 +234,7 @@ def match_policies_by_condition(policies, user):
 
 def assess_policy_matches(policies, user):
     if not policies:
-        return PolicyMatchAssessmentResult(
-            matches=[]
-        )
+        return PolicyMatchAssessmentResult(matches=[])
 
     client = _get_client()
 
@@ -308,12 +304,6 @@ def assess_policy_matches(policies, user):
         raise GeminiRequestError from exc
 
     try:
-        return _parse_response(
-            response,
-            PolicyMatchAssessmentResult,
-        )
-    except (
-        ValidationError,
-        json.JSONDecodeError,
-    ) as exc:
+        return _parse_response(response, PolicyMatchAssessmentResult)
+    except (ValidationError, json.JSONDecodeError) as exc:
         raise GeminiRequestError from exc
