@@ -26,6 +26,7 @@ from .models import (
     PostLike,
     CommentLike,
     PostImage,
+    Poll, PollOption, PollVote,
 )
 from .serializers import (
     PostListSerializer,
@@ -127,12 +128,10 @@ def post_list(request, board_type):
             "로그인이 필요합니다."
         )
 
-    serializer = PostCreateUpdateSerializer(
-        data=request.data
-    )
-    serializer.is_valid(
-        raise_exception=True
-    )
+    serializer = PostCreateUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    poll_data = serializer.validated_data.pop("poll", None)
 
     images = request.FILES.getlist("images")
 
@@ -152,11 +151,17 @@ def post_list(request, board_type):
     for order, image_file in enumerate(images):
         PostImage.objects.create(post=post, image=image_file, order=order)
 
+    if poll_data:
+        poll = Poll.objects.create(
+            post=post,
+            question=poll_data["question"],
+            allow_multiple=poll_data.get("allow_multiple", False),
+        )
+        for order, option_data in enumerate(poll_data["options"]):
+            PollOption.objects.create(poll=poll, text=option_data["text"], order=order)
+
     return success_response(
-        data=PostDetailSerializer(
-            post,
-            context={"request": request},
-        ).data,
+        data=PostDetailSerializer(post, context={"request": request}).data,
         message="게시글이 등록되었습니다.",
         status_code=status.HTTP_201_CREATED,
     )
