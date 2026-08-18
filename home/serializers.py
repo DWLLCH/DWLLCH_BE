@@ -5,10 +5,8 @@ from .models import Policy
 
 class PolicyListSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
-    regionSido = serializers.CharField(
-        source="region_sido",
-        allow_null=True,
-    )
+    regionSido = serializers.CharField(source="region_sido", allow_null=True)
+    updatedAt = serializers.DateTimeField(source="updated_at")
     matchLevel = serializers.SerializerMethodField()
     matchReason = serializers.SerializerMethodField()
 
@@ -22,6 +20,7 @@ class PolicyListSerializer(serializers.ModelSerializer):
             "organization",
             "regionSido",
             "applicationEnd",
+            "updatedAt",
             "matchLevel",
             "matchReason",
         ]
@@ -130,7 +129,4 @@ class SimilarPolicySerializer(serializers.ModelSerializer):
 
 class PolicyChatbotQuerySerializer(serializers.Serializer):
     question = serializers.CharField(max_length=500)
-    policyId = serializers.IntegerField(
-        source="policy_id",
-        required=False,
-    )
+    policyId = serializers.IntegerField(source="policy_id", required=False)

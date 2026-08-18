@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 
 from briefing.models import compute_profile_signature
 from common.pagination import CommonPageNumberPagination
@@ -29,28 +29,32 @@ User = get_user_model()
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_list(request):
-    queryset = Policy.objects.all().order_by(
-        "-created_at",
-        "-id",
-    )
+    queryset = Policy.objects.all()
 
     category = request.query_params.get("category")
     if category:
-        queryset = queryset.filter(
-            category=category
-        )
+        queryset = queryset.filter(category=category)
 
     keyword = request.query_params.get("keyword")
     if keyword:
-        queryset = queryset.filter(
-            title__icontains=keyword
-        )
+        queryset = queryset.filter(title__icontains=keyword)
+
+    sort = request.query_params.get("sort", "updatedAt")
+
+    if sort == "applicationEnd":
+        queryset = queryset.order_by("application_end", "-id")
+    elif sort == "updatedAt":
+        queryset = queryset.order_by("-updated_at", "-id")
+    else:
+        raise ValidationError({
+            "sort": (
+                "sort는 updatedAt 또는 "
+                "applicationEnd 중 하나여야 합니다."
+            )
+        })
 
     paginator = CommonPageNumberPagination()
-    page = paginator.paginate_queryset(
-        queryset,
-        request,
-    )
+    page = paginator.paginate_queryset(queryset, request)
 
     match_map = {}
 
@@ -60,10 +64,7 @@ def policy_list(request):
         and page
     ):
         try:
-            result = assess_policy_matches(
-                page,
-                request.user,
-            )
+            result = assess_policy_matches(page, request.user)
 
             match_map = {
                 match.policy_id: match
@@ -85,9 +86,7 @@ def policy_list(request):
         },
     )
 
-    return paginator.get_paginated_response(
-        serializer.data
-    )
+    return paginator.get_paginated_response(serializer.data)
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
