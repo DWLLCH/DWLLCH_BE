@@ -61,28 +61,57 @@ def validate_image_file(image_file):
 
 
 def parse_post_request_data(request):
-    """multipart/form-data로 이미지와 함께 전송된 경우 poll 필드는
-    JSON 문자열로 오므로, dict로 파싱해 nested serializer가 처리할 수 있게 한다.
-
-    QueryDict은 nested Serializer 필드를 HTML form 표기법(poll.question 등)으로만
-    읽기 때문에, poll 키에 dict를 그대로 넣어도 무시된다. 일반 dict로 변환해야
-    nested serializer가 값을 읽을 수 있다."""
+    """
+    multipart/form-data 요청에서 JSON 문자열로 전달되는
+    poll, keepImageIds 필드를 Python 객체로 변환한다.
+    """
     data = request.data
+
     if not isinstance(data, QueryDict):
         return data
 
-    poll_raw = data.get("poll")
-    if not poll_raw:
-        return data
-
     data = data.dict()
-    try:
-        data["poll"] = json.loads(poll_raw)
-    except (TypeError, ValueError):
-        raise ValidationError({"poll": "poll은 올바른 JSON 문자열이어야 합니다."})
+
+    poll_raw = data.get("poll")
+
+    if poll_raw:
+        try:
+            data["poll"] = json.loads(poll_raw)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {
+                    "poll": (
+                        "poll은 올바른 JSON 문자열이어야 합니다."
+                    )
+                }
+            )
+
+    if "keepImageIds" in data:
+        keep_image_ids_raw = data.get("keepImageIds")
+
+        try:
+            keep_image_ids = json.loads(keep_image_ids_raw)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {
+                    "keepImageIds": (
+                        "keepImageIds는 올바른 JSON 배열이어야 합니다."
+                    )
+                }
+            )
+
+        if not isinstance(keep_image_ids, list):
+            raise ValidationError(
+                {
+                    "keepImageIds": (
+                        "keepImageIds는 배열 형태여야 합니다."
+                    )
+                }
+            )
+
+        data["keepImageIds"] = keep_image_ids
 
     return data
-
 
 def apply_poll_update(post, poll_data):
     """게시글의 설문을 poll_data로 교체한다. 이미 투표가 있으면 수정을 막고,
