@@ -9,8 +9,16 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Post, Comment, PostLike, CommentLike, Poll, PollOption, PollVote
-
+from .models import (
+    Post,
+    Comment,
+    PostLike,
+    CommentLike,
+    PostImage,
+    Poll,
+    PollOption,
+    PollVote,
+)
 
 User = get_user_model()
 
@@ -1165,3 +1173,305 @@ class CommunityPollPatchTest(APITestCase):
 
         self.poll.refresh_from_db()
         self.assertEqual(self.poll.question, "멀티파트 질문")
+
+class CommunityPostPatchTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="patch@example.com",
+            username="patchuser",
+            password="Test1234!",
+        )
+
+        self.other_user = User.objects.create_user(
+            email="patch-other@example.com",
+            username="patchother",
+            password="Test1234!",
+        )
+
+        self.post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.user,
+            title="수정 전 제목",
+            content="수정 전 내용",
+        )
+
+        self.image1 = PostImage.objects.create(
+            post=self.post,
+            image="community/posts/old1.jpg",
+            order=0,
+        )
+
+        self.image2 = PostImage.objects.create(
+            post=self.post,
+            image="community/posts/old2.jpg",
+            order=1,
+        )
+
+        refresh = RefreshToken.for_user(
+            self.user
+        )
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=(
+                f"Bearer {refresh.access_token}"
+            )
+        )
+
+        self.url = (
+            f"/community/posts/{self.post.id}"
+        )
+
+    def test_board_type_patch_success(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "boardType": Post.BoardType.WORRY,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.post.refresh_from_db()
+
+        self.assertEqual(
+            self.post.board_type,
+            Post.BoardType.WORRY,
+        )
+
+    def test_invalid_board_type_patch_fail(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "boardType": "INVALID",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    def test_keep_image_ids_deletes_unselected_images(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "keepImageIds": json.dumps(
+                    [self.image1.id]
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertTrue(
+            PostImage.objects.filter(
+                id=self.image1.id
+            ).exists()
+        )
+
+        self.assertFalse(
+            PostImage.objects.filter(
+                id=self.image2.id
+            ).exists()
+        )
+
+    def test_empty_keep_image_ids_deletes_all_images(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "keepImageIds": json.dumps([]),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            self.post.images.count(),
+            0,
+        )
+
+    def test_missing_keep_image_ids_keeps_existing_images(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "title": "제목만 수정",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            self.post.images.count(),
+            2,
+        )
+
+    def test_add_new_image_without_keep_ids_keeps_old_images(self):
+        new_image = SimpleUploadedFile(
+            "new.jpg",
+            b"new-image-bytes",
+            content_type="image/jpeg",
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "images": [new_image],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            self.post.images.count(),
+            3,
+        )
+
+    def test_keep_image_and_add_new_image(self):
+        new_image = SimpleUploadedFile(
+            "new2.jpg",
+            b"new-image-bytes",
+            content_type="image/jpeg",
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "keepImageIds": json.dumps(
+                    [self.image2.id]
+                ),
+                "images": [new_image],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        images = list(
+            self.post.images.order_by(
+                "order",
+                "id",
+            )
+        )
+
+        self.assertEqual(
+            len(images),
+            2,
+        )
+
+        self.assertEqual(
+            images[0].id,
+            self.image2.id,
+        )
+
+        self.assertEqual(
+            images[0].order,
+            0,
+        )
+
+        self.assertEqual(
+            images[1].order,
+            1,
+        )
+
+    def test_other_post_image_id_fails(self):
+        other_post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.other_user,
+            title="다른 게시글",
+            content="다른 내용",
+        )
+
+        other_image = PostImage.objects.create(
+            post=other_post,
+            image="community/posts/other.jpg",
+            order=0,
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "keepImageIds": json.dumps(
+                    [
+                        self.image1.id,
+                        other_image.id,
+                    ]
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.assertTrue(
+            PostImage.objects.filter(
+                id=self.image1.id
+            ).exists()
+        )
+
+        self.assertTrue(
+            PostImage.objects.filter(
+                id=self.image2.id
+            ).exists()
+        )
+
+    def test_image_count_over_five_fails(self):
+        for index in range(3):
+            PostImage.objects.create(
+                post=self.post,
+                image=(
+                    f"community/posts/"
+                    f"extra{index}.jpg"
+                ),
+                order=index + 2,
+            )
+
+        new_image = SimpleUploadedFile(
+            "sixth.jpg",
+            b"sixth-image",
+            content_type="image/jpeg",
+        )
+
+        response = self.client.patch(
+            self.url,
+            {
+                "images": [new_image],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.assertEqual(
+            self.post.images.count(),
+            5,
+        )
