@@ -108,6 +108,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
     isLiked = serializers.SerializerMethodField()
     isMine = serializers.SerializerMethodField()
     images = PostImageSerializer(many=True, read_only=True)
+    poll = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
 
@@ -128,6 +129,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
             "isLiked",
             "isMine",
             "images",
+            "poll",
             "createdAt",
             "updatedAt",
         ]
@@ -160,6 +162,11 @@ class PostDetailSerializer(serializers.ModelSerializer):
             and request.user == obj.author
         )
 
+    def get_poll(self, obj):
+        poll = getattr(obj, "poll", None)
+        if not poll:
+            return None
+        return PollSerializer(poll, context=self.context).data
 
 class PostCreateUpdateSerializer(serializers.ModelSerializer):
     isAnonymous = serializers.BooleanField(
