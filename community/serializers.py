@@ -169,28 +169,54 @@ class PostDetailSerializer(serializers.ModelSerializer):
         return PollSerializer(poll, context=self.context).data
 
 class PostCreateUpdateSerializer(serializers.ModelSerializer):
+    boardType = serializers.ChoiceField(
+        source="board_type",
+        choices=Post.BoardType.choices,
+        required=False,
+    )
+
     isAnonymous = serializers.BooleanField(
         source="is_anonymous",
         required=False,
     )
+
     allowNotification = serializers.BooleanField(
         source="allow_notification",
         required=False,
     )
-    poll = PollCreateSerializer(required=False, write_only=True)
+
+    poll = PollCreateSerializer(
+        required=False,
+        write_only=True,
+    )
+
+    keepImageIds = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = Post
         fields = [
             "id",
+            "boardType",
             "title",
             "content",
             "isAnonymous",
             "allowNotification",
             "poll",
+            "keepImageIds",
         ]
         read_only_fields = ["id"]
 
+    def validate_keepImageIds(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError(
+                "중복된 이미지 id가 포함되어 있습니다."
+            )
+
+        return value
 
 class PostPinSerializer(serializers.ModelSerializer):
     isPinned = serializers.BooleanField(

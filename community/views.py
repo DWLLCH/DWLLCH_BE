@@ -61,28 +61,57 @@ def validate_image_file(image_file):
 
 
 def parse_post_request_data(request):
-    """multipart/form-data로 이미지와 함께 전송된 경우 poll 필드는
-    JSON 문자열로 오므로, dict로 파싱해 nested serializer가 처리할 수 있게 한다.
-
-    QueryDict은 nested Serializer 필드를 HTML form 표기법(poll.question 등)으로만
-    읽기 때문에, poll 키에 dict를 그대로 넣어도 무시된다. 일반 dict로 변환해야
-    nested serializer가 값을 읽을 수 있다."""
+    """
+    multipart/form-data 요청에서 JSON 문자열로 전달되는
+    poll, keepImageIds 필드를 Python 객체로 변환한다.
+    """
     data = request.data
+
     if not isinstance(data, QueryDict):
         return data
 
-    poll_raw = data.get("poll")
-    if not poll_raw:
-        return data
-
     data = data.dict()
-    try:
-        data["poll"] = json.loads(poll_raw)
-    except (TypeError, ValueError):
-        raise ValidationError({"poll": "poll은 올바른 JSON 문자열이어야 합니다."})
+
+    poll_raw = data.get("poll")
+
+    if poll_raw:
+        try:
+            data["poll"] = json.loads(poll_raw)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {
+                    "poll": (
+                        "poll은 올바른 JSON 문자열이어야 합니다."
+                    )
+                }
+            )
+
+    if "keepImageIds" in data:
+        keep_image_ids_raw = data.get("keepImageIds")
+
+        try:
+            keep_image_ids = json.loads(keep_image_ids_raw)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {
+                    "keepImageIds": (
+                        "keepImageIds는 올바른 JSON 배열이어야 합니다."
+                    )
+                }
+            )
+
+        if not isinstance(keep_image_ids, list):
+            raise ValidationError(
+                {
+                    "keepImageIds": (
+                        "keepImageIds는 배열 형태여야 합니다."
+                    )
+                }
+            )
+
+        data["keepImageIds"] = keep_image_ids
 
     return data
-
 
 def apply_poll_update(post, poll_data):
     """게시글의 설문을 poll_data로 교체한다. 이미 투표가 있으면 수정을 막고,
@@ -108,6 +137,121 @@ def apply_poll_update(post, poll_data):
     for order, option_data in enumerate(poll_data["options"]):
         PollOption.objects.create(poll=poll, text=option_data["text"], order=order)
 
+def apply_post_image_update(
+    post,
+    keep_image_ids,
+    new_images,
+):
+    """
+    게시글 수정 시 이미지 유지/삭제/추가를 처리한다.
+
+    keep_image_ids가 None:
+        기존 이미지를 모두 유지
+
+    keep_image_ids가 []:
+        기존 이미지를 모두 삭제
+
+    keep_image_ids가 [1, 3]:
+        해당 id 이미지만 유지
+
+    new_images:
+        유지 이미지 뒤에 신규 이미지 추가
+    """
+
+    existing_images = list(
+        post.images.order_by("order", "id")
+    )
+
+    existing_image_ids = {
+        image.id
+        for image in existing_images
+    }
+
+    if keep_image_ids is None:
+        kept_images = existing_images
+
+    else:
+        requested_ids = set(keep_image_ids)
+
+        invalid_ids = (
+            requested_ids
+            - existing_image_ids
+        )
+
+        if invalid_ids:
+            raise ValidationError(
+                {
+                    "keepImageIds": (
+                        "해당 게시글에 속하지 않는 "
+                        f"이미지 id가 포함되어 있습니다: "
+                        f"{sorted(invalid_ids)}"
+                    )
+                }
+            )
+
+        kept_images = [
+            image
+            for image in existing_images
+            if image.id in requested_ids
+        ]
+
+    for image_file in new_images:
+        validate_image_file(image_file)
+
+    final_image_count = (
+        len(kept_images)
+        + len(new_images)
+    )
+
+    if final_image_count > MAX_IMAGE_COUNT:
+        raise ValidationError(
+            {
+                "images": (
+                    f"이미지는 최대 "
+                    f"{MAX_IMAGE_COUNT}장까지 "
+                    "등록할 수 있습니다."
+                )
+            }
+        )
+
+    # keepImageIds가 전달된 경우에만
+    # 기존 이미지 삭제 여부를 판단한다.
+    if keep_image_ids is not None:
+        keep_ids = [
+            image.id
+            for image in kept_images
+        ]
+
+        delete_queryset = post.images.all()
+
+        if keep_ids:
+            delete_queryset = (
+                delete_queryset.exclude(
+                    id__in=keep_ids
+                )
+            )
+
+        delete_queryset.delete()
+
+    # 유지 이미지 순서 재정렬
+    for order, image in enumerate(kept_images):
+        if image.order != order:
+            image.order = order
+            image.save(
+                update_fields=["order"]
+            )
+
+    # 신규 이미지는 기존 이미지 뒤에 추가
+    start_order = len(kept_images)
+
+    for offset, image_file in enumerate(
+        new_images
+    ):
+        PostImage.objects.create(
+            post=post,
+            image=image_file,
+            order=start_order + offset,
+        )
 
 @api_view(["GET", "POST"])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
@@ -186,6 +330,8 @@ def post_list(request, board_type):
     serializer.is_valid(raise_exception=True)
 
     poll_data = serializer.validated_data.pop("poll", None)
+
+    serializer.validated_data.pop("keepImageIds", None)
 
     images = request.FILES.getlist("images")
 
@@ -316,17 +462,63 @@ def post_detail(request, post_id):
             data=parse_post_request_data(request),
             partial=True,
         )
+
         serializer.is_valid(
             raise_exception=True
         )
 
-        poll_provided = "poll" in serializer.validated_data
-        poll_data = serializer.validated_data.pop("poll", None)
+        poll_provided = (
+            "poll"
+            in serializer.validated_data
+        )
+
+        poll_data = (
+            serializer.validated_data.pop(
+                "poll",
+                None,
+            )
+        )
+
+        keep_image_ids_provided = (
+            "keepImageIds"
+            in serializer.validated_data
+        )
+
+        keep_image_ids = (
+            serializer.validated_data.pop(
+                "keepImageIds",
+                None,
+            )
+        )
+
+        new_images = (
+            request.FILES.getlist("images")
+        )
 
         with transaction.atomic():
             serializer.save()
+
             if poll_provided:
-                apply_poll_update(post, poll_data)
+                apply_poll_update(
+                    post,
+                    poll_data,
+                )
+
+            if (
+                keep_image_ids_provided
+                or new_images
+            ):
+                apply_post_image_update(
+                    post=post,
+                    keep_image_ids=(
+                        keep_image_ids
+                        if keep_image_ids_provided
+                        else None
+                    ),
+                    new_images=new_images,
+                )
+
+        post.refresh_from_db()
 
         return success_response(
             data=PostDetailSerializer(
@@ -335,7 +527,6 @@ def post_detail(request, post_id):
             ).data,
             message="게시글이 수정되었습니다.",
         )
-
     post.delete()
 
     return Response(
