@@ -93,7 +93,34 @@ def policy_list(request):
 @permission_classes([AllowAny])
 def policy_detail(request, policy_id):
     policy = get_object_or_404(Policy, id=policy_id)
-    serializer = PolicyDetailSerializer(policy)
+
+    match_map = {}
+
+    if (
+        request.user.is_authenticated
+        and request.user.profile_completed
+    ):
+        try:
+            result = assess_policy_matches(
+                [policy],
+                request.user,
+            )
+
+            match_map = {
+                match.policy_id: match
+                for match in result.matches
+            }
+
+        except GeminiRequestError:
+            logger.exception(
+                "Gemini policy detail match assessment failed: "
+                "user_id=%s, policy_id=%s",
+                request.user.id,
+                policy.id,
+            )
+
+    serializer = PolicyDetailSerializer(policy, context={"match_map": match_map})
+
     return success_response(
         data=serializer.data,
         message="정책 상세 정보를 조회했습니다.",
