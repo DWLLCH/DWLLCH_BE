@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Policy
+from .models import Policy, PolicyScrap
 
 
 class PolicyListSerializer(serializers.ModelSerializer):
@@ -130,3 +130,22 @@ class SimilarPolicySerializer(serializers.ModelSerializer):
 class PolicyChatbotQuerySerializer(serializers.Serializer):
     question = serializers.CharField(max_length=500)
     policyId = serializers.IntegerField(source="policy_id", required=False)
+
+
+class PolicyScrapSerializer(serializers.ModelSerializer):
+    policyId = serializers.IntegerField(source="policy.id", read_only=True)
+    policyTitle = serializers.CharField(source="policy.title", read_only=True)
+    category = serializers.CharField(source="policy.category", read_only=True)
+    applicationEnd = serializers.DateField(source="policy.application_end", read_only=True, allow_null=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = PolicyScrap
+        fields = [
+            "id",
+            "policyId",
+            "policyTitle",
+            "category",
+            "applicationEnd",
+            "createdAt",
+        ]

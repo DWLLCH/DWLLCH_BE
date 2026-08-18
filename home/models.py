@@ -3,9 +3,6 @@ from django.db import models
 
 import hashlib
 
-from django.conf import settings
-from django.db import models
-
 class Policy(models.Model):
     class Category(models.TextChoices):
         HOUSING = "HOUSING", "주거"
@@ -37,6 +34,26 @@ class Policy(models.Model):
 
     def __str__(self):
         return self.title
+
+class PolicyScrap(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="policy_scraps",
+    )
+    policy = models.ForeignKey(
+        Policy,
+        on_delete=models.CASCADE,
+        related_name="scraps",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["user", "policy"]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} scrapped {self.policy}"
 
 class CurationMatchCache(models.Model):
     profile_signature = models.CharField(max_length=16, db_index=True)
