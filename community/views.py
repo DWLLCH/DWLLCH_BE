@@ -1,3 +1,5 @@
+import json
+
 from django.db.models import (
     F,
     Q,
@@ -7,6 +9,7 @@ from django.db.models import (
     Value,
     BooleanField,
 )
+from django.http import QueryDict
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, parser_classes
@@ -37,6 +40,7 @@ from .serializers import (
     CommentCreateUpdateSerializer,
     ReportCreateSerializer,
     ScrapSerializer,
+    PollSerializer,
 )
 
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
@@ -53,6 +57,30 @@ def validate_image_file(image_file):
         raise ValidationError(
             {"images": f"{image_file.name}: 이미지 크기는 5MB 이하여야 합니다."}
         )
+
+
+def parse_post_request_data(request):
+    """multipart/form-data로 이미지와 함께 전송된 경우 poll 필드는
+    JSON 문자열로 오므로, dict로 파싱해 nested serializer가 처리할 수 있게 한다.
+
+    QueryDict은 nested Serializer 필드를 HTML form 표기법(poll.question 등)으로만
+    읽기 때문에, poll 키에 dict를 그대로 넣어도 무시된다. 일반 dict로 변환해야
+    nested serializer가 값을 읽을 수 있다."""
+    data = request.data
+    if not isinstance(data, QueryDict):
+        return data
+
+    poll_raw = data.get("poll")
+    if not poll_raw:
+        return data
+
+    data = data.dict()
+    try:
+        data["poll"] = json.loads(poll_raw)
+    except (TypeError, ValueError):
+        raise ValidationError({"poll": "poll은 올바른 JSON 문자열이어야 합니다."})
+
+    return data
 
 
 @api_view(["GET", "POST"])
@@ -128,7 +156,7 @@ def post_list(request, board_type):
             "로그인이 필요합니다."
         )
 
-    serializer = PostCreateUpdateSerializer(data=request.data)
+    serializer = PostCreateUpdateSerializer(data=parse_post_request_data(request))
     serializer.is_valid(raise_exception=True)
 
     poll_data = serializer.validated_data.pop("poll", None)
