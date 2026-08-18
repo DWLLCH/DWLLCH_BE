@@ -147,3 +147,14 @@ class CommentLike(models.Model):
 
     def __str__(self):
         return f"{self.user} liked comment {self.comment.id}"
+
+class PostImage(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(upload_to="community/posts/")
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.post.title} - image {self.order}"
