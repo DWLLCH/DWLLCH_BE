@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Post, Comment, Report, Scrap
+from .models import Post, Comment, Report, Scrap, PostImage
 
 
 class PostListSerializer(serializers.ModelSerializer):
@@ -56,8 +56,15 @@ class PostListSerializer(serializers.ModelSerializer):
         return obj.likes.filter(
             user=request.user
         ).exists()
+
     def get_excerpt(self, obj):
         return obj.content[:100]
+
+
+class PostImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PostImage
+        fields = ["id", "image", "order"]
 
 
 class PostDetailSerializer(serializers.ModelSerializer):
@@ -71,6 +78,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
     likeCount = serializers.SerializerMethodField()
     isLiked = serializers.SerializerMethodField()
     isMine = serializers.SerializerMethodField()
+    images = PostImageSerializer(many=True, read_only=True)
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
 
@@ -90,6 +98,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
             "likeCount",
             "isLiked",
             "isMine",
+            "images",
             "createdAt",
             "updatedAt",
         ]
@@ -232,45 +241,6 @@ class CommentSerializer(serializers.ModelSerializer):
 
         if instance.is_deleted:
             data["content"] = "삭제된 댓글입니다."
-
-        return data
-
-    def get_authorName(self, obj):
-        if obj.is_deleted:
-            return ""
-
-        return "익명" if obj.is_anonymous else obj.author.username
-
-    def get_likeCount(self, obj):
-        if hasattr(obj, "annotated_like_count"):
-            return obj.annotated_like_count
-
-        return obj.likes.count()
-
-    def get_isLiked(self, obj):
-        if obj.is_deleted:
-            return False
-
-        if hasattr(obj, "annotated_is_liked"):
-            return obj.annotated_is_liked
-
-        request = self.context.get("request")
-
-        if not request or not request.user.is_authenticated:
-            return False
-
-        return obj.likes.filter(
-            user=request.user
-        ).exists()
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-
-        if instance.is_deleted:
-            data["content"] = "삭제된 댓글입니다."
-            data["authorName"] = ""
-            data["isAnonymous"] = False
-            data["isLiked"] = False
 
         return data
 
