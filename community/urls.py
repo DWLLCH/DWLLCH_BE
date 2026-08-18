@@ -4,6 +4,8 @@ from . import views
 
 urlpatterns = [
     path("community/boards/<str:board_type>/posts", views.post_list, name="post-list"),
+    path("community/posts/mine", views.my_posts, name="my-posts"),
+    path("community/comments/mine", views.my_comments, name="my-comments"),
     path("community/posts/<int:post_id>", views.post_detail, name="post-detail"),
     path("community/posts/<int:post_id>/comments", views.comment_list, name="comment-list"),
     path("community/comments/<int:comment_id>", views.comment_detail, name="comment-detail"),
