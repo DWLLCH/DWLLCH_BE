@@ -310,6 +310,14 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 class MyCommentSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if instance.is_deleted:
+            data["content"] = "삭제된 댓글입니다."
+
+        return data
+    
     postId = serializers.IntegerField(
         source="post.id",
         read_only=True,
