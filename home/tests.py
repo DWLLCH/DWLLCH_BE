@@ -1,4 +1,6 @@
 from unittest.mock import patch
+from datetime import date, timedelta
+from django.utils import timezone
 
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -66,90 +68,210 @@ class PolicyListMatchTest(APITestCase):
 
         response = self.client.get(self.url)
 
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_200_OK,
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         policy = response.data["content"][0]
 
-        self.assertEqual(
-            policy["matchLevel"],
-            "HIGH",
-        )
-        self.assertEqual(
-            policy["matchReason"],
-            "현재 주거 상황과 잘 맞아요.",
-        )
+        self.assertEqual(policy["matchLevel"], "HIGH")
+        self.assertEqual(policy["matchReason"], "현재 주거 상황과 잘 맞아요.")
 
     def test_policy_list_guest_match_is_null(self):
         response = self.client.get(self.url)
 
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_200_OK,
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         policy = response.data["content"][0]
 
-        self.assertIsNone(
-            policy["matchLevel"]
-        )
-        self.assertIsNone(
-            policy["matchReason"]
-        )
+        self.assertIsNone(policy["matchLevel"])
+        self.assertIsNone(policy["matchReason"])
 
     @patch("home.views.assess_policy_matches")
-    def test_policy_list_ai_failure_still_success(
-        self,
-        mock_assess,
-    ):
+    def test_policy_list_ai_failure_still_success(self, mock_assess):
         self.authenticate()
 
         mock_assess.side_effect = GeminiRequestError()
 
         response = self.client.get(self.url)
 
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_200_OK,
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         policy = response.data["content"][0]
 
-        self.assertIsNone(
-            policy["matchLevel"]
-        )
-        self.assertIsNone(
-            policy["matchReason"]
-        )
+        self.assertIsNone(policy["matchLevel"])
+        self.assertIsNone(policy["matchReason"])
 
     @patch("home.views.assess_policy_matches")
-    def test_policy_list_profile_incomplete_skips_ai(
-        self,
-        mock_assess,
-    ):
+    def test_policy_list_profile_incomplete_skips_ai(self, mock_assess):
         self.user.profile_completed = False
-        self.user.save(
-            update_fields=["profile_completed"]
-        )
+        self.user.save(update_fields=["profile_completed"])
 
         self.authenticate()
 
         response = self.client.get(self.url)
 
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_200_OK,
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         mock_assess.assert_not_called()
 
         policy = response.data["content"][0]
 
-        self.assertIsNone(
-            policy["matchLevel"]
+        self.assertIsNone(policy["matchLevel"])
+        self.assertIsNone(policy["matchReason"])
+
+    def test_policy_list_includes_updated_at(self):
+        response = self.client.get("/policies")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        policy = response.data["content"][0]
+
+        self.assertIn("updatedAt", policy)
+
+
+    def test_policy_list_sort_by_updated_at(self):
+        older_policy = Policy.objects.create(
+            title="이전 수정 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
         )
-        self.assertIsNone(
-            policy["matchReason"]
+
+        newer_policy = Policy.objects.create(
+            title="최근 수정 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
         )
+
+        now = timezone.now()
+
+        Policy.objects.filter(id=older_policy.id).update(updated_at=now - timedelta(days=1))
+
+        Policy.objects.filter(id=newer_policy.id).update(updated_at=now)
+
+        response = self.client.get("/policies?sort=updatedAt")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        policies = response.data["content"]
+
+        ids = [
+            policy["id"]
+            for policy in policies
+            if policy["id"] in [
+                older_policy.id,
+                newer_policy.id,
+            ]
+        ]
+
+        self.assertEqual(ids, [newer_policy.id, older_policy.id])
+
+
+    def test_policy_list_sort_by_application_end(self):
+        later_policy = Policy.objects.create(
+            title="마감 늦은 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            application_end=date.today() + timedelta(days=10),
+        )
+
+        sooner_policy = Policy.objects.create(
+            title="마감 빠른 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            application_end=date.today() + timedelta(days=3),
+        )
+
+        response = self.client.get("/policies?sort=applicationEnd")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        policies = response.data["content"]
+
+        ids = [
+            policy["id"]
+            for policy in policies
+            if policy["id"] in [
+                later_policy.id,
+                sooner_policy.id,
+            ]
+        ]
+
+        self.assertEqual(ids, [sooner_policy.id, later_policy.id])
+
+
+    def test_policy_list_default_sort_is_updated_at(self):
+        older_policy = Policy.objects.create(
+            title="기본 정렬 이전 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+        )
+
+        newer_policy = Policy.objects.create(
+            title="기본 정렬 최신 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+        )
+
+        now = timezone.now()
+
+        Policy.objects.filter(id=older_policy.id).update(updated_at=now - timedelta(days=1))
+
+        Policy.objects.filter(id=newer_policy.id).update(updated_at=now)
+
+        response = self.client.get("/policies")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        policies = response.data["content"]
+
+        ids = [
+            policy["id"]
+            for policy in policies
+            if policy["id"] in [
+                older_policy.id,
+                newer_policy.id,
+            ]
+        ]
+
+        self.assertEqual(ids, [newer_policy.id, older_policy.id])
+
+
+    def test_policy_list_invalid_sort_fail(self):
+        response = self.client.get("/policies?sort=invalid")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
