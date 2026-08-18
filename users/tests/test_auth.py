@@ -287,7 +287,7 @@ class AuthAPITestCase(APITestCase):
         )
 
     def test_email_change_success(self):
-        access_token, _ = self.get_tokens()
+        access_token, refresh_token = self.get_tokens()
 
         self.client.credentials(
             HTTP_AUTHORIZATION=f"Bearer {access_token}"
@@ -316,6 +316,24 @@ class AuthAPITestCase(APITestCase):
         self.assertEqual(
             user.email,
             "new@example.com",
+        )
+
+        reissue_response = self.client.post(
+            "/auth/reissue",
+            {
+                "refreshToken": refresh_token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            reissue_response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertIn(
+            "accessToken",
+            reissue_response.data["data"],
         )
 
     def test_email_change_wrong_password_fail(self):
