@@ -525,6 +525,11 @@ def post_detail(request, post_id):
             ).data,
             message="게시글이 수정되었습니다.",
         )
+    post.delete()
+
+    return Response(
+        status=status.HTTP_204_NO_CONTENT,
+    )
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
