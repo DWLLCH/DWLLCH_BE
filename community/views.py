@@ -331,6 +331,8 @@ def post_list(request, board_type):
 
     poll_data = serializer.validated_data.pop("poll", None)
 
+    serializer.validated_data.pop("keepImageIds", None)
+
     images = request.FILES.getlist("images")
 
     if len(images) > MAX_IMAGE_COUNT:
