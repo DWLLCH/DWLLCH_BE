@@ -13,6 +13,7 @@ class PostListSerializer(serializers.ModelSerializer):
     likeCount = serializers.SerializerMethodField()
     isLiked = serializers.SerializerMethodField()
     excerpt = serializers.SerializerMethodField()
+    thumbnail = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at")
 
     class Meta:
@@ -29,6 +30,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "likeCount",
             "isLiked",
             "excerpt",
+            "thumbnail",
             "createdAt",
         ]
 
@@ -59,6 +61,15 @@ class PostListSerializer(serializers.ModelSerializer):
 
     def get_excerpt(self, obj):
         return obj.content[:100]
+    def get_thumbnail(self, obj):
+        request = self.context.get("request")
+        first_image = obj.images.order_by("order").first()
+        if not first_image:
+            return None
+        url = first_image.image.url
+        if request:
+            return request.build_absolute_uri(url)
+        return url
 
 
 class PostImageSerializer(serializers.ModelSerializer):
