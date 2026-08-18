@@ -286,6 +286,260 @@ class AuthAPITestCase(APITestCase):
             status.HTTP_401_UNAUTHORIZED,
         )
 
+    def test_email_change_success(self):
+        access_token, refresh_token = self.get_tokens()
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "new@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["email"],
+            "new@example.com",
+        )
+
+        user = User.objects.get(username="testuser")
+        self.assertEqual(
+            user.email,
+            "new@example.com",
+        )
+
+        reissue_response = self.client.post(
+            "/auth/reissue",
+            {
+                "refreshToken": refresh_token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            reissue_response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertIn(
+            "accessToken",
+            reissue_response.data["data"],
+        )
+
+    def test_email_change_wrong_password_fail(self):
+        access_token, _ = self.get_tokens()
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "WrongPassword!",
+                "newEmail": "new@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.assertEqual(
+            response.data["code"],
+            "AUTH_400_CURRENT_PASSWORD_MISMATCH",
+        )
+
+        user = User.objects.get(username="testuser")
+        self.assertEqual(
+            user.email,
+            "test@example.com",
+        )
+
+    def test_email_change_duplicate_email_fail(self):
+        access_token, _ = self.get_tokens()
+
+        User.objects.create_user(
+            email="existing@example.com",
+            username="existinguser",
+            password="Test1234!",
+        )
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "existing@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        user = User.objects.get(username="testuser")
+        self.assertEqual(
+            user.email,
+            "test@example.com",
+        )
+
+    def test_email_change_same_email_fail(self):
+        access_token, _ = self.get_tokens()
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "test@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    def test_email_change_invalid_email_fail(self):
+        access_token, _ = self.get_tokens()
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "invalid-email",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    def test_email_change_unauthenticated_fail(self):
+        response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "new@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_login_with_new_email_after_change(self):
+        access_token, _ = self.get_tokens()
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        change_response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "new@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            change_response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.client.credentials()
+
+        login_response = self.client.post(
+            "/auth/login",
+            {
+                "email": "new@example.com",
+                "password": "password123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertIn(
+            "accessToken",
+            login_response.data["data"],
+        )
+
+    def test_login_with_old_email_after_change_fail(self):
+        access_token, _ = self.get_tokens()
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+        )
+
+        change_response = self.client.patch(
+            "/auth/email",
+            {
+                "currentPassword": "password123!",
+                "newEmail": "new@example.com",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            change_response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.client.credentials()
+
+        login_response = self.client.post(
+            "/auth/login",
+            {
+                "email": "test@example.com",
+                "password": "password123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+
+
+
     def test_account_delete_success(self):
         access_token, refresh_token = self.get_tokens()
 

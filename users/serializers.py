@@ -234,6 +234,26 @@ class PasswordChangeSerializer(serializers.Serializer):
 
         return attrs
 
+class EmailChangeSerializer(serializers.Serializer):
+    currentPassword = serializers.CharField(
+        write_only=True,
+    )
+    newEmail = serializers.EmailField()
+
+    def validate_newEmail(self, value):
+        request = self.context.get("request")
+
+        if request and request.user.email == value:
+            raise serializers.ValidationError(
+                "현재 사용 중인 이메일과 동일합니다."
+            )
+
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError(
+                "이미 가입된 이메일입니다."
+            )
+
+        return value
 
 class AccountDeleteSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
