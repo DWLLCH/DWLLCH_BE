@@ -309,6 +309,35 @@ class CommentSerializer(serializers.ModelSerializer):
         return data
 
 
+class MyCommentSerializer(serializers.ModelSerializer):
+    postId = serializers.IntegerField(
+        source="post.id",
+        read_only=True,
+    )
+    postTitle = serializers.CharField(
+        source="post.title",
+        read_only=True,
+    )
+    boardType = serializers.CharField(
+        source="post.board_type",
+        read_only=True,
+    )
+    createdAt = serializers.DateTimeField(
+        source="created_at",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Comment
+        fields = [
+            "id",
+            "content",
+            "postId",
+            "postTitle",
+            "boardType",
+            "createdAt",
+        ]
+
 class CommentCreateUpdateSerializer(serializers.ModelSerializer):
     isAnonymous = serializers.BooleanField(
         source="is_anonymous",
