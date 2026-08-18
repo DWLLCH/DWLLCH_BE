@@ -1,6 +1,23 @@
 from rest_framework import serializers
 
-from .models import Post, Comment, Report, Scrap, PostImage
+from .models import Post, Comment, Report, Scrap, PostImage, Poll, PollOption, PollVote
+
+
+class PollOptionCreateSerializer(serializers.Serializer):
+    text = serializers.CharField(max_length=100)
+
+
+class PollCreateSerializer(serializers.Serializer):
+    question = serializers.CharField(max_length=100)
+    allowMultiple = serializers.BooleanField(source="allow_multiple", required=False, default=False)
+    options = PollOptionCreateSerializer(many=True)
+
+    def validate_options(self, value):
+        if len(value) < 2:
+            raise serializers.ValidationError("선택지는 2개 이상이어야 합니다.")
+        if len(value) > 10:
+            raise serializers.ValidationError("선택지는 최대 10개까지 가능합니다.")
+        return value
 
 
 class PostListSerializer(serializers.ModelSerializer):
@@ -61,6 +78,7 @@ class PostListSerializer(serializers.ModelSerializer):
 
     def get_excerpt(self, obj):
         return obj.content[:100]
+
     def get_thumbnail(self, obj):
         request = self.context.get("request")
         first_image = obj.images.order_by("order").first()
@@ -90,6 +108,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
     isLiked = serializers.SerializerMethodField()
     isMine = serializers.SerializerMethodField()
     images = PostImageSerializer(many=True, read_only=True)
+    poll = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
 
@@ -110,6 +129,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
             "isLiked",
             "isMine",
             "images",
+            "poll",
             "createdAt",
             "updatedAt",
         ]
@@ -142,6 +162,11 @@ class PostDetailSerializer(serializers.ModelSerializer):
             and request.user == obj.author
         )
 
+    def get_poll(self, obj):
+        poll = getattr(obj, "poll", None)
+        if not poll:
+            return None
+        return PollSerializer(poll, context=self.context).data
 
 class PostCreateUpdateSerializer(serializers.ModelSerializer):
     isAnonymous = serializers.BooleanField(
@@ -152,6 +177,7 @@ class PostCreateUpdateSerializer(serializers.ModelSerializer):
         source="allow_notification",
         required=False,
     )
+    poll = PollCreateSerializer(required=False, write_only=True)
 
     class Meta:
         model = Post
@@ -161,6 +187,7 @@ class PostCreateUpdateSerializer(serializers.ModelSerializer):
             "content",
             "isAnonymous",
             "allowNotification",
+            "poll",
         ]
         read_only_fields = ["id"]
 
@@ -308,3 +335,38 @@ class ScrapSerializer(serializers.ModelSerializer):
             "boardType",
             "createdAt",
         ]
+
+
+class PollOptionSerializer(serializers.ModelSerializer):
+    voteCount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PollOption
+        fields = ["id", "text", "voteCount"]
+
+    def get_voteCount(self, obj):
+        if hasattr(obj, "annotated_vote_count"):
+            return obj.annotated_vote_count
+        return obj.votes.count()
+
+
+class PollSerializer(serializers.ModelSerializer):
+    allowMultiple = serializers.BooleanField(source="allow_multiple")
+    options = PollOptionSerializer(many=True, read_only=True)
+    totalVoters = serializers.SerializerMethodField()
+    myVotedOptionIds = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Poll
+        fields = ["id", "question", "allowMultiple", "options", "totalVoters", "myVotedOptionIds"]
+
+    def get_totalVoters(self, obj):
+        return PollVote.objects.filter(option__poll=obj).values("user_id").distinct().count()
+
+    def get_myVotedOptionIds(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return []
+        return list(
+            PollVote.objects.filter(option__poll=obj, user=request.user).values_list("option_id", flat=True)
+        )

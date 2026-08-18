@@ -26,6 +26,7 @@ from .models import (
     PostLike,
     CommentLike,
     PostImage,
+    Poll, PollOption, PollVote,
 )
 from .serializers import (
     PostListSerializer,
@@ -127,12 +128,10 @@ def post_list(request, board_type):
             "로그인이 필요합니다."
         )
 
-    serializer = PostCreateUpdateSerializer(
-        data=request.data
-    )
-    serializer.is_valid(
-        raise_exception=True
-    )
+    serializer = PostCreateUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    poll_data = serializer.validated_data.pop("poll", None)
 
     images = request.FILES.getlist("images")
 
@@ -152,11 +151,17 @@ def post_list(request, board_type):
     for order, image_file in enumerate(images):
         PostImage.objects.create(post=post, image=image_file, order=order)
 
+    if poll_data:
+        poll = Poll.objects.create(
+            post=post,
+            question=poll_data["question"],
+            allow_multiple=poll_data.get("allow_multiple", False),
+        )
+        for order, option_data in enumerate(poll_data["options"]):
+            PollOption.objects.create(poll=poll, text=option_data["text"], order=order)
+
     return success_response(
-        data=PostDetailSerializer(
-            post,
-            context={"request": request},
-        ).data,
+        data=PostDetailSerializer(post, context={"request": request}).data,
         message="게시글이 등록되었습니다.",
         status_code=status.HTTP_201_CREATED,
     )
@@ -728,3 +733,36 @@ def my_comments(request):
     page = paginator.paginate_queryset(comments, request)
     serializer = CommentSerializer(page, many=True, context={"request": request})
     return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def poll_vote(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+    poll = get_object_or_404(Poll, post=post)
+
+    option_ids = request.data.get("optionIds")
+
+    if not option_ids or not isinstance(option_ids, list):
+        raise ValidationError({"optionIds": "선택지 id 목록을 배열로 보내주세요."})
+
+    if not poll.allow_multiple and len(option_ids) > 1:
+        raise ValidationError({"optionIds": "이 설문은 단일 선택만 가능합니다."})
+
+    options = PollOption.objects.filter(poll=poll, id__in=option_ids)
+
+    if options.count() != len(set(option_ids)):
+        raise ValidationError({"optionIds": "유효하지 않은 선택지가 포함되어 있습니다."})
+
+    already_voted = PollVote.objects.filter(option__poll=poll, user=request.user).exists()
+    if already_voted:
+        raise ValidationError({"detail": "이미 투표하셨습니다."})
+
+    for option in options:
+        PollVote.objects.create(option=option, user=request.user)
+
+    return success_response(
+        data=PollSerializer(poll, context={"request": request}).data,
+        message="투표가 완료되었습니다.",
+        status_code=status.HTTP_201_CREATED,
+    )
