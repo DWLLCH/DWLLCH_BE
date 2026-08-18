@@ -977,9 +977,6 @@ def my_posts(request):
     serializer = PostListSerializer(page, many=True, context={"request": request})
     return paginator.get_paginated_response(serializer.data)
 
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def my_comments(request):
@@ -987,7 +984,7 @@ def my_comments(request):
         Comment.objects
         .filter(author=request.user)
         .select_related("post", "author")
-        .order_by("-created_at")
+        .order_by("-created_at", "-id")
     )
 
     paginator = CommonPageNumberPagination()
