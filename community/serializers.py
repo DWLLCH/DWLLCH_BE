@@ -12,6 +12,7 @@ class PostListSerializer(serializers.ModelSerializer):
     commentCount = serializers.SerializerMethodField()
     likeCount = serializers.SerializerMethodField()
     isLiked = serializers.SerializerMethodField()
+    excerpt = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at")
 
     class Meta:
@@ -27,6 +28,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "commentCount",
             "likeCount",
             "isLiked",
+            "excerpt",
             "createdAt",
         ]
 
@@ -54,6 +56,8 @@ class PostListSerializer(serializers.ModelSerializer):
         return obj.likes.filter(
             user=request.user
         ).exists()
+    def get_excerpt(self, obj):
+        return obj.content[:100]
 
 
 class PostDetailSerializer(serializers.ModelSerializer):
