@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError, api_settings
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from datetime import timedelta
@@ -337,8 +337,24 @@ class EmailChangeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user.email = new_email
-        user.save(update_fields=["email"])
+        try:
+            with transaction.atomic():
+                user.email = new_email
+                user.save(update_fields=["email"])
+        except IntegrityError:
+            return Response(
+                {
+                    "success": False,
+                    "code": "COMMON_400_INVALID_INPUT",
+                    "message": "잘못된 요청입니다.",
+                    "data": {
+                        "newEmail": [
+                            "이미 가입된 이메일입니다."
+                        ]
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(
             {
