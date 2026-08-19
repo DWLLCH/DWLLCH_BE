@@ -55,7 +55,53 @@ def validate_required_document_items(value):
                 "linkUrl은 문자열 또는 null이어야 합니다."
             )
 
-        
+
+class ProtectionType(models.TextChoices):
+    RESIDENTIAL_CARE = "RESIDENTIAL_CARE", "아동양육시설"
+    GROUP_HOME = "GROUP_HOME", "공동생활가정"
+    FOSTER_CARE = "FOSTER_CARE", "가정위탁"
+
+
+class AgeRange(models.TextChoices):
+    UNDER_18 = "UNDER_18", "만 18세 미만"
+    AGE_18_24 = "AGE_18_24", "만 18세~24세"
+    AGE_25_34 = "AGE_25_34", "만 25세~34세"
+
+
+class IncomeCriteria(models.TextChoices):
+    BASIC_LIVELIHOOD = "BASIC_LIVELIHOOD", "기초생활수급자"
+    MEDIAN_INCOME = "MEDIAN_INCOME", "기준 중위소득"
+    NEAR_POVERTY = "NEAR_POVERTY", "차상위계층"
+
+
+def validate_choice_list(value, choices_cls, field_label):
+    if not isinstance(value, list):
+        raise ValidationError(
+            f"{field_label}는 배열이어야 합니다."
+        )
+
+    valid_values = {choice.value for choice in choices_cls}
+
+    invalid_values = [item for item in value if item not in valid_values]
+
+    if invalid_values:
+        raise ValidationError(
+            f"{field_label}에 유효하지 않은 값이 있습니다: {', '.join(map(str, invalid_values))}"
+        )
+
+
+def validate_protection_types(value):
+    validate_choice_list(value, ProtectionType, "protection_types")
+
+
+def validate_age_ranges(value):
+    validate_choice_list(value, AgeRange, "age_ranges")
+
+
+def validate_income_criteria(value):
+    validate_choice_list(value, IncomeCriteria, "income_criteria")
+
+
 class Policy(models.Model):
     class Category(models.TextChoices):
         HOUSING = "HOUSING", "주거"
@@ -64,6 +110,10 @@ class Policy(models.Model):
         EDUCATION = "EDUCATION", "교육"
         MENTAL_HEALTH = "MENTAL_HEALTH", "심리/정서"
         ETC = "ETC", "기타"
+
+    ProtectionType = ProtectionType
+    AgeRange = AgeRange
+    IncomeCriteria = IncomeCriteria
 
     title = models.CharField(max_length=200)
     summary = models.CharField(max_length=300)
@@ -74,6 +124,9 @@ class Policy(models.Model):
     application_method = models.TextField(help_text="언제까지 신청하나요? (신청 방법/기간)")
     required_documents = models.TextField(help_text="무엇을 준비해야 하나요? (준비 서류)")
     category = models.CharField(max_length=20, choices=Category.choices)
+    protection_types = models.JSONField(default=list, blank=True, validators=[validate_protection_types], help_text="대상 보호유형 (복수 선택 가능)")
+    age_ranges = models.JSONField(default=list, blank=True, validators=[validate_age_ranges], help_text="대상 연령 구간 (복수 선택 가능)")
+    income_criteria = models.JSONField(default=list, blank=True, validators=[validate_income_criteria], help_text="대상 소득 기준 (복수 선택 가능)")
     target_condition = models.TextField(help_text="AI 큐레이션 매칭용 키워드 텍스트")
     organization = models.CharField(max_length=100, help_text="주관 기관")
     region_sido = models.CharField(
