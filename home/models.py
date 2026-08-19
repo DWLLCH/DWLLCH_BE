@@ -179,7 +179,6 @@ class PolicyScrap(models.Model):
 class CurationMatchCache(models.Model):
     class CacheType(models.TextChoices):
         CURATION = "CURATION", "홈 큐레이션"
-        POLICY_MATCH = "POLICY_MATCH", "정책 목록/상세 매칭"
 
     cache_type = models.CharField(
         max_length=20,
@@ -196,6 +195,34 @@ class CurationMatchCache(models.Model):
 
     def __str__(self):
         return f"{self.cache_type} - {self.profile_signature} - {self.policy_ids_hash}"
+
+class PolicyMatchCache(models.Model):
+    """프로필 + 정책 하나 단위의 AI 매칭 결과 캐시.
+
+    정책 "집합" 단위로 캐싱하면 정렬/필터가 바뀌거나 목록에서 상세로 넘어갈 때
+    집합이 달라져 캐시가 통째로 빗나가고 전체를 다시 평가하게 된다.
+    정책 하나 단위로 저장해, 이미 평가한 정책은 재사용하고
+    처음 보는 정책만 AI 에 묻는다.
+    """
+
+    class MatchLevel(models.TextChoices):
+        HIGH = "HIGH", "높음"
+        MEDIUM = "MEDIUM", "보통"
+        LOW = "LOW", "낮음"
+
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, related_name="match_caches")
+    profile_signature = models.CharField(max_length=16, db_index=True)
+    match_level = models.CharField(max_length=10, choices=MatchLevel.choices)
+    match_reason = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, help_text="캐시 유효기간 판정 기준")
+
+    class Meta:
+        unique_together = ["policy", "profile_signature"]
+
+    def __str__(self):
+        return f"{self.policy_id} - {self.profile_signature} - {self.match_level}"
+
 
 def compute_policy_ids_hash(policies):
     ids = sorted(p.id for p in policies)
