@@ -121,11 +121,13 @@ class Policy(models.Model):
     content = models.TextField(help_text="이 지원사업은? (소개)")
     eligibility = models.TextField(help_text="내가 신청할 수 있나요? (신청 자격)")
     eligibility_items = models.JSONField(
-    default=list,
-    help_text='자격요건 항목 리스트. 예: [{"label": "만 18세 이상 자립준비청년"}]',
+        default=list,
+        blank=True,
+        help_text='자격요건 항목 리스트. 예: [{"label": "만 18세 이상 자립준비청년"}]',
     )
     required_document_items = models.JSONField(
         default=list,
+        blank=True,
         help_text='서류 항목 리스트. 예: [{"label": "주민등록등본", "issueMethod": "정부24", "linkUrl": "https://..."}]',
     )
     application_method = models.TextField(help_text="언제까지 신청하나요? (신청 방법/기간)")
