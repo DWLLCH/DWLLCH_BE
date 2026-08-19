@@ -19,6 +19,7 @@ from .models import (
     Policy,
     PolicyScrap,
     CurationMatchCache,
+    PolicyMatchCache,
     ProtectionType,
     AgeRange,
     IncomeCriteria,
@@ -56,41 +57,59 @@ CACHE_VALID_DURATION = timedelta(days=1)
 
 
 def get_or_assess_policy_matches(policies, user):
+    """정책 단위로 캐시를 재사용하고, 캐시에 없는 정책만 AI 에 묻는다.
+
+    정책 집합 단위로 캐싱하면 정렬/필터가 바뀌거나 목록에서 상세로 넘어갈 때
+    집합이 달라져 캐시가 통째로 빗나간다. 정책 하나씩 캐시를 두면
+    이미 평가한 정책은 그대로 쓰고 처음 보는 정책만 호출 대상이 된다.
+    """
     if not policies:
         return {}
 
     profile_signature = compute_profile_signature(user)
-    policy_ids_hash = compute_policy_ids_hash(policies)
     cutoff = timezone.now() - CACHE_VALID_DURATION
 
-    cache = CurationMatchCache.objects.filter(
-        cache_type=CurationMatchCache.CacheType.POLICY_MATCH,
-        profile_signature=profile_signature,
-        policy_ids_hash=policy_ids_hash,
-        created_at__gte=cutoff,
-    ).first()
-
-    if cache:
-        return {item["policy_id"]: item for item in cache.matched_result}
-
-    result = assess_policy_matches(policies, user)
-    matched_result = [
-        {
-            "policy_id": m.policy_id,
-            "match_level": m.match_level,
-            "match_reason": m.match_reason,
+    match_map = {
+        cache.policy_id: {
+            "policy_id": cache.policy_id,
+            "match_level": cache.match_level,
+            "match_reason": cache.match_reason,
         }
-        for m in result.matches
-    ]
+        for cache in PolicyMatchCache.objects.filter(
+            profile_signature=profile_signature,
+            policy__in=policies,
+            updated_at__gte=cutoff,
+        )
+    }
 
-    CurationMatchCache.objects.update_or_create(
-        cache_type=CurationMatchCache.CacheType.POLICY_MATCH,
-        profile_signature=profile_signature,
-        policy_ids_hash=policy_ids_hash,
-        defaults={"matched_result": matched_result},
-    )
+    missing = [policy for policy in policies if policy.id not in match_map]
 
-    return {item["policy_id"]: item for item in matched_result}
+    if not missing:
+        return match_map
+
+    result = assess_policy_matches(missing, user)
+    missing_ids = {policy.id for policy in missing}
+
+    for match in result.matches:
+        # 물어보지 않은 정책 id 를 돌려주는 경우가 있어 걸러낸다.
+        if match.policy_id not in missing_ids:
+            continue
+
+        PolicyMatchCache.objects.update_or_create(
+            policy_id=match.policy_id,
+            profile_signature=profile_signature,
+            defaults={
+                "match_level": match.match_level,
+                "match_reason": match.match_reason,
+            },
+        )
+        match_map[match.policy_id] = {
+            "policy_id": match.policy_id,
+            "match_level": match.match_level,
+            "match_reason": match.match_reason,
+        }
+
+    return match_map
 
 def _validate_choice_values(param_name, values, choices_cls):
     valid_values = {choice.value for choice in choices_cls}
