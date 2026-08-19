@@ -54,6 +54,24 @@ def _parse_multi_param(request, param_name):
     return [value.strip() for value in raw.split(",") if value.strip()]
 CACHE_VALID_DURATION = timedelta(days=1)
 
+# AI 추천순 정렬 우선순위. 매칭 결과가 없는 정책은 맨 뒤로 보낸다.
+MATCH_LEVEL_SORT_PRIORITY = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+UNMATCHED_SORT_PRIORITY = len(MATCH_LEVEL_SORT_PRIORITY)
+
+POLICY_SORT_OPTIONS = ("updatedAt", "applicationEnd", "scrapCount", "matchLevel")
+
+
+def _assess_matches_safely(policies, user):
+    """매칭 실패는 목록 조회 자체를 막지 않는다. 실패하면 빈 결과로 본다."""
+    try:
+        return get_or_assess_policy_matches(policies, user)
+    except GeminiRequestError:
+        logger.exception(
+            "Gemini policy match assessment failed: user_id=%s",
+            user.id,
+        )
+        return {}
+
 
 def get_or_assess_policy_matches(policies, user):
     if not policies:
@@ -155,36 +173,48 @@ def policy_list(request):
 
     sort = request.query_params.get("sort", "updatedAt")
 
+    if sort not in POLICY_SORT_OPTIONS:
+        raise ValidationError({
+            "sort": f"sort는 {', '.join(POLICY_SORT_OPTIONS)} 중 하나여야 합니다."
+        })
+
     if sort == "applicationEnd":
         queryset = queryset.order_by("application_end", "-id")
-    elif sort == "updatedAt":
-        queryset = queryset.order_by("-updated_at", "-id")
     elif sort == "scrapCount":
         queryset = queryset.order_by("-scrap_count", "-id")
     else:
-        raise ValidationError({
-            "sort": "sort는 updatedAt, applicationEnd, scrapCount 중 하나여야 합니다."
-        })
+        # matchLevel 도 최신순을 기본 순서로 깔고, 아래에서 매칭 등급으로 다시 정렬한다.
+        queryset = queryset.order_by("-updated_at", "-id")
 
     queryset = _apply_policy_group_filters(queryset, request)
+
+    can_match = (
+        request.user.is_authenticated
+        and request.user.profile_completed
+    )
+
+    match_map = {}
+
+    if sort == "matchLevel" and can_match:
+        # 매칭 등급은 페이지가 잘린 뒤에는 알 수 없으므로,
+        # 필터된 전체를 먼저 평가하고 정렬한 다음 페이지를 자른다.
+        policies = list(queryset)
+        match_map = _assess_matches_safely(policies, request.user)
+
+        # sorted 는 안정 정렬이라 같은 등급 안에서는 위의 기본 순서가 유지된다.
+        queryset = sorted(
+            policies,
+            key=lambda policy: MATCH_LEVEL_SORT_PRIORITY.get(
+                (match_map.get(policy.id) or {}).get("match_level"),
+                UNMATCHED_SORT_PRIORITY,
+            ),
+        )
 
     paginator = CommonPageNumberPagination()
     page = paginator.paginate_queryset(queryset, request)
 
-    match_map = {}
-
-    if (
-        request.user.is_authenticated
-        and request.user.profile_completed
-        and page
-    ):
-        try:
-            match_map = get_or_assess_policy_matches(page, request.user)
-        except GeminiRequestError:
-            logger.exception(
-                "Gemini policy match assessment failed: user_id=%s",
-                request.user.id,
-            )
+    if not match_map and can_match and page:
+        match_map = _assess_matches_safely(page, request.user)
 
     serializer = PolicyListSerializer(
         page,
