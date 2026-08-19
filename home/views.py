@@ -19,6 +19,7 @@ from .models import (
     Policy,
     PolicyScrap,
     CurationMatchCache,
+    PolicyMatchCache,
     ProtectionType,
     AgeRange,
     IncomeCriteria,
@@ -54,43 +55,79 @@ def _parse_multi_param(request, param_name):
     return [value.strip() for value in raw.split(",") if value.strip()]
 CACHE_VALID_DURATION = timedelta(days=1)
 
+# AI 추천순 정렬 우선순위. 매칭 결과가 없는 정책은 맨 뒤로 보낸다.
+MATCH_LEVEL_SORT_PRIORITY = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+UNMATCHED_SORT_PRIORITY = len(MATCH_LEVEL_SORT_PRIORITY)
+
+POLICY_SORT_OPTIONS = ("updatedAt", "applicationEnd", "scrapCount", "matchLevel")
+
+
+def _assess_matches_safely(policies, user):
+    """매칭 실패는 목록 조회 자체를 막지 않는다. 실패하면 빈 결과로 본다."""
+    try:
+        return get_or_assess_policy_matches(policies, user)
+    except GeminiRequestError:
+        logger.exception(
+            "Gemini policy match assessment failed: user_id=%s",
+            user.id,
+        )
+        return {}
+
 
 def get_or_assess_policy_matches(policies, user):
+    """정책 단위로 캐시를 재사용하고, 캐시에 없는 정책만 AI 에 묻는다.
+
+    정책 집합 단위로 캐싱하면 정렬/필터가 바뀌거나 목록에서 상세로 넘어갈 때
+    집합이 달라져 캐시가 통째로 빗나간다. 정책 하나씩 캐시를 두면
+    이미 평가한 정책은 그대로 쓰고 처음 보는 정책만 호출 대상이 된다.
+    """
     if not policies:
         return {}
 
     profile_signature = compute_profile_signature(user)
-    policy_ids_hash = compute_policy_ids_hash(policies)
     cutoff = timezone.now() - CACHE_VALID_DURATION
 
-    cache = CurationMatchCache.objects.filter(
-        cache_type=CurationMatchCache.CacheType.POLICY_MATCH,
-        profile_signature=profile_signature,
-        policy_ids_hash=policy_ids_hash,
-        created_at__gte=cutoff,
-    ).first()
-
-    if cache:
-        return {item["policy_id"]: item for item in cache.matched_result}
-
-    result = assess_policy_matches(policies, user)
-    matched_result = [
-        {
-            "policy_id": m.policy_id,
-            "match_level": m.match_level,
-            "match_reason": m.match_reason,
+    match_map = {
+        cache.policy_id: {
+            "policy_id": cache.policy_id,
+            "match_level": cache.match_level,
+            "match_reason": cache.match_reason,
         }
-        for m in result.matches
-    ]
+        for cache in PolicyMatchCache.objects.filter(
+            profile_signature=profile_signature,
+            policy__in=policies,
+            updated_at__gte=cutoff,
+        )
+    }
 
-    CurationMatchCache.objects.update_or_create(
-        cache_type=CurationMatchCache.CacheType.POLICY_MATCH,
-        profile_signature=profile_signature,
-        policy_ids_hash=policy_ids_hash,
-        defaults={"matched_result": matched_result},
-    )
+    missing = [policy for policy in policies if policy.id not in match_map]
 
-    return {item["policy_id"]: item for item in matched_result}
+    if not missing:
+        return match_map
+
+    result = assess_policy_matches(missing, user)
+    missing_ids = {policy.id for policy in missing}
+
+    for match in result.matches:
+        # 물어보지 않은 정책 id 를 돌려주는 경우가 있어 걸러낸다.
+        if match.policy_id not in missing_ids:
+            continue
+
+        PolicyMatchCache.objects.update_or_create(
+            policy_id=match.policy_id,
+            profile_signature=profile_signature,
+            defaults={
+                "match_level": match.match_level,
+                "match_reason": match.match_reason,
+            },
+        )
+        match_map[match.policy_id] = {
+            "policy_id": match.policy_id,
+            "match_level": match.match_level,
+            "match_reason": match.match_reason,
+        }
+
+    return match_map
 
 def _validate_choice_values(param_name, values, choices_cls):
     valid_values = {choice.value for choice in choices_cls}
@@ -155,36 +192,48 @@ def policy_list(request):
 
     sort = request.query_params.get("sort", "updatedAt")
 
+    if sort not in POLICY_SORT_OPTIONS:
+        raise ValidationError({
+            "sort": f"sort는 {', '.join(POLICY_SORT_OPTIONS)} 중 하나여야 합니다."
+        })
+
     if sort == "applicationEnd":
         queryset = queryset.order_by("application_end", "-id")
-    elif sort == "updatedAt":
-        queryset = queryset.order_by("-updated_at", "-id")
     elif sort == "scrapCount":
         queryset = queryset.order_by("-scrap_count", "-id")
     else:
-        raise ValidationError({
-            "sort": "sort는 updatedAt, applicationEnd, scrapCount 중 하나여야 합니다."
-        })
+        # matchLevel 도 최신순을 기본 순서로 깔고, 아래에서 매칭 등급으로 다시 정렬한다.
+        queryset = queryset.order_by("-updated_at", "-id")
 
     queryset = _apply_policy_group_filters(queryset, request)
+
+    can_match = (
+        request.user.is_authenticated
+        and request.user.profile_completed
+    )
+
+    match_map = {}
+
+    if sort == "matchLevel" and can_match:
+        # 매칭 등급은 페이지가 잘린 뒤에는 알 수 없으므로,
+        # 필터된 전체를 먼저 평가하고 정렬한 다음 페이지를 자른다.
+        policies = list(queryset)
+        match_map = _assess_matches_safely(policies, request.user)
+
+        # sorted 는 안정 정렬이라 같은 등급 안에서는 위의 기본 순서가 유지된다.
+        queryset = sorted(
+            policies,
+            key=lambda policy: MATCH_LEVEL_SORT_PRIORITY.get(
+                (match_map.get(policy.id) or {}).get("match_level"),
+                UNMATCHED_SORT_PRIORITY,
+            ),
+        )
 
     paginator = CommonPageNumberPagination()
     page = paginator.paginate_queryset(queryset, request)
 
-    match_map = {}
-
-    if (
-        request.user.is_authenticated
-        and request.user.profile_completed
-        and page
-    ):
-        try:
-            match_map = get_or_assess_policy_matches(page, request.user)
-        except GeminiRequestError:
-            logger.exception(
-                "Gemini policy match assessment failed: user_id=%s",
-                request.user.id,
-            )
+    if not match_map and can_match and page:
+        match_map = _assess_matches_safely(page, request.user)
 
     serializer = PolicyListSerializer(
         page,
@@ -215,7 +264,10 @@ def policy_detail(request, policy_id):
                 request.user.id, policy.id,
             )
 
-    serializer = PolicyDetailSerializer(policy, context={"match_map": match_map})
+    serializer = PolicyDetailSerializer(
+        policy,
+        context={"request": request, "match_map": match_map},
+    )
 
     return success_response(
         data=serializer.data,

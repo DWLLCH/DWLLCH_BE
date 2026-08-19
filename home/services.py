@@ -352,7 +352,16 @@ def judge_eligibility_item(label, user):
                 response_schema=EligibilityJudgeResult,
             ),
         )
+    except (
+        genai_errors.APIError,
+        httpx.HTTPError,
+        TimeoutError,
+    ) as exc:
+        raise GeminiRequestError from exc
+
+    try:
         result = _parse_response(response, EligibilityJudgeResult)
-        return result.status
-    except GeminiRequestError:
-        return "NEED_CHECK"  # AI 실패 시에도 절대 MET으로 잘못 표시하지 않음
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc
+
+    return result.status

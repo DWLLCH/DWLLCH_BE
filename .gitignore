@@ -17,6 +17,9 @@ db.sqlite3
 media/
 staticfiles/
 
+# 원본 데이터 (파싱 결과는 데이터 마이그레이션에 인라인되어 있음)
+home/data/
+
 # IDE
 .vscode/
 .idea/
