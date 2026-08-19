@@ -168,7 +168,15 @@ class PolicyScrap(models.Model):
         return f"{self.user} scrapped {self.policy}"
 
 class CurationMatchCache(models.Model):
-    cache_type = models.CharField(max_length=20, default="CURATION")  # "CURATION" | "POLICY_MATCH"
+    class CacheType(models.TextChoices):
+        CURATION = "CURATION", "홈 큐레이션"
+        POLICY_MATCH = "POLICY_MATCH", "정책 목록/상세 매칭"
+
+    cache_type = models.CharField(
+        max_length=20,
+        choices=CacheType.choices,
+        default=CacheType.CURATION,
+    )
     profile_signature = models.CharField(max_length=16, db_index=True)
     policy_ids_hash = models.CharField(max_length=16)
     matched_result = models.JSONField(help_text="AI가 생성한 매칭 결과 (policy_id, match_reason 등)")
