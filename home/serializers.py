@@ -10,6 +10,7 @@ class PolicyListSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
     regionSido = serializers.CharField(source="region_sido", allow_null=True)
     updatedAt = serializers.DateTimeField(source="updated_at")
+    supportAmount = serializers.CharField(source="support_amount", allow_null=True)
     matchLevel = serializers.SerializerMethodField()
     matchReason = serializers.SerializerMethodField()
     scrapCount = serializers.SerializerMethodField()
@@ -25,6 +26,7 @@ class PolicyListSerializer(serializers.ModelSerializer):
             "regionSido",
             "applicationEnd",
             "updatedAt",
+            "supportAmount",
             "matchLevel",
             "matchReason",
             "scrapCount",
@@ -68,6 +70,7 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end", allow_null=True)
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
+    supportAmount = serializers.CharField(source="support_amount", allow_null=True)
     matchLevel = serializers.SerializerMethodField()
     matchReason = serializers.SerializerMethodField()
 
@@ -90,6 +93,7 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "applicationEnd",
             "createdAt",
             "updatedAt",
+            "supportAmount",
             "matchLevel",
             "matchReason",
         ]
