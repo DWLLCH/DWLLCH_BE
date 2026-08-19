@@ -31,16 +31,12 @@ class PolicyListSerializer(serializers.ModelSerializer):
     def get_matchLevel(self, obj):
         match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-        if not match:
-            return None
-        return match.match_level
+        return match["match_level"] if match else None
 
     def get_matchReason(self, obj):
         match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-        if not match:
-            return None
-        return match.match_reason
+        return match["match_reason"] if match else None
 
 
 class RequiredDocumentSerializer(serializers.Serializer):
@@ -90,20 +86,15 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "matchLevel",
             "matchReason",
         ]
-
     def get_matchLevel(self, obj):
         match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-        if not match:
-            return None
-        return match.match_level
+        return match["match_level"] if match else None
 
     def get_matchReason(self, obj):
         match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-        if not match:
-            return None
-        return match.match_reason
+        return match["match_reason"] if match else None
 
     def get_eligibility(self, obj):
         request = self.context.get("request")

@@ -168,17 +168,17 @@ class PolicyScrap(models.Model):
         return f"{self.user} scrapped {self.policy}"
 
 class CurationMatchCache(models.Model):
+    cache_type = models.CharField(max_length=20, default="CURATION")  # "CURATION" | "POLICY_MATCH"
     profile_signature = models.CharField(max_length=16, db_index=True)
     policy_ids_hash = models.CharField(max_length=16)
-    matched_result = models.JSONField(help_text="AI가 생성한 매칭 결과 (policy_id, match_reason 쌍의 리스트)")
+    matched_result = models.JSONField(help_text="AI가 생성한 매칭 결과 (policy_id, match_reason 등)")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["profile_signature", "policy_ids_hash"]
+        unique_together = ["cache_type", "profile_signature", "policy_ids_hash"]
 
     def __str__(self):
-        return f"{self.profile_signature} - {self.policy_ids_hash}"
-
+        return f"{self.cache_type} - {self.profile_signature} - {self.policy_ids_hash}"
 
 def compute_policy_ids_hash(policies):
     ids = sorted(p.id for p in policies)
