@@ -160,8 +160,7 @@ if IS_PRODUCTION:
             "HOST": required_rds_settings["RDS_HOSTNAME"],
             "PORT": os.getenv("RDS_PORT", "5432"),
             "OPTIONS": {
-                "sslmode": "verify-full",
-                "sslrootcert": "/path/to/global-bundle.pem",
+                "sslmode": "require",
                 "connect_timeout": 5,
             },
         }
