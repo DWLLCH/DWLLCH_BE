@@ -54,7 +54,8 @@ class PolicyListSerializer(serializers.ModelSerializer):
 
 class PolicyDetailSerializer(serializers.ModelSerializer):
     applicationMethod = serializers.CharField(source="application_method")
-    requiredDocuments = serializers.CharField(source="required_documents")
+    eligibility = serializers.ListField(source="eligibility_items", child=serializers.CharField(), read_only=True)
+    requiredDocuments = serializers.JSONField(source="required_document_items", read_only=True)
     consultPhone = serializers.CharField(source="consult_phone", allow_null=True)
     consultLink = serializers.URLField(source="consult_link", allow_null=True)
     regionSido = serializers.CharField(source="region_sido", allow_null=True)

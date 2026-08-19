@@ -16,8 +16,10 @@ class Policy(models.Model):
     summary = models.CharField(max_length=300)
     content = models.TextField(help_text="이 지원사업은? (소개)")
     eligibility = models.TextField(help_text="내가 신청할 수 있나요? (신청 자격)")
+    eligibility_items = models.JSONField(default=list, blank=True)
     application_method = models.TextField(help_text="언제까지 신청하나요? (신청 방법/기간)")
     required_documents = models.TextField(help_text="무엇을 준비해야 하나요? (준비 서류)")
+    required_document_items = models.JSONField(default=list, blank=True)
     category = models.CharField(max_length=20, choices=Category.choices)
     target_condition = models.TextField(help_text="AI 큐레이션 매칭용 키워드 텍스트")
     organization = models.CharField(max_length=100, help_text="주관 기관")
@@ -36,16 +38,8 @@ class Policy(models.Model):
         return self.title
 
 class PolicyScrap(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="policy_scraps",
-    )
-    policy = models.ForeignKey(
-        Policy,
-        on_delete=models.CASCADE,
-        related_name="scraps",
-    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="policy_scraps")
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, related_name="scraps")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
