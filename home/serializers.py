@@ -12,6 +12,7 @@ class PolicyListSerializer(serializers.ModelSerializer):
     updatedAt = serializers.DateTimeField(source="updated_at")
     matchLevel = serializers.SerializerMethodField()
     matchReason = serializers.SerializerMethodField()
+    scrapCount = serializers.SerializerMethodField()
 
     class Meta:
         model = Policy
@@ -26,6 +27,7 @@ class PolicyListSerializer(serializers.ModelSerializer):
             "updatedAt",
             "matchLevel",
             "matchReason",
+            "scrapCount",
         ]
 
     def get_matchLevel(self, obj):
@@ -37,6 +39,11 @@ class PolicyListSerializer(serializers.ModelSerializer):
         match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
         return match["match_reason"] if match else None
+
+    def get_scrapCount(self, obj):
+        if hasattr(obj, "scrap_count"):
+            return obj.scrap_count
+        return obj.scraps.count()
 
 
 class RequiredDocumentSerializer(serializers.Serializer):

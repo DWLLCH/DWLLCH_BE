@@ -13,6 +13,7 @@ from django.utils import timezone
 from briefing.models import compute_profile_signature
 from common.pagination import CommonPageNumberPagination
 from common.responses import success_response
+from django.db.models import Count
 
 from .models import (
     Policy,
@@ -133,11 +134,10 @@ def _apply_policy_group_filters(queryset, request):
 
     return [policy for policy in queryset if matches_any_group(policy)]
 
-
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_list(request):
-    queryset = Policy.objects.all()
+    queryset = Policy.objects.annotate(scrap_count=Count("scraps"))
 
     category = request.query_params.get("category")
     if category:
@@ -153,12 +153,11 @@ def policy_list(request):
         queryset = queryset.order_by("application_end", "-id")
     elif sort == "updatedAt":
         queryset = queryset.order_by("-updated_at", "-id")
+    elif sort == "scrapCount":
+        queryset = queryset.order_by("-scrap_count", "-id")
     else:
         raise ValidationError({
-            "sort": (
-                "sort는 updatedAt 또는 "
-                "applicationEnd 중 하나여야 합니다."
-            )
+            "sort": "sort는 updatedAt, applicationEnd, scrapCount 중 하나여야 합니다."
         })
 
     queryset = _apply_policy_group_filters(queryset, request)
