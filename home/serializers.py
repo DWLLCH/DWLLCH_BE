@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import serializers
 
 from .models import Policy, PolicyScrap
@@ -5,6 +7,8 @@ from .services import judge_eligibility_item, GeminiRequestError
 from briefing.models import compute_profile_signature
 
 from .models import Policy, PolicyScrap, EligibilityJudgeCache
+
+logger = logging.getLogger(__name__)
 
 class PolicyListSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
@@ -129,13 +133,21 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
                     try:
                         status = judge_eligibility_item(label, user)
                     except GeminiRequestError:
-                        status = "NEED_CHECK"
-
-                    EligibilityJudgeCache.objects.update_or_create(
-                        policy=obj, eligibility_label=label, profile_signature=profile_signature,
-                        defaults={"status": status},
-                    )
-                    entry["met"] = status
+                        # 폴백 결과를 저장하면 EligibilityJudgeCache 에는 유효기간이 없어
+                        # 일시적인 호출 실패가 영구히 NEED_CHECK 로 굳는다.
+                        # 저장하지 않고 다음 요청에서 다시 판정하게 둔다.
+                        logger.exception(
+                            "Eligibility judge failed: user_id=%s, policy_id=%s, label=%s",
+                            user.id, obj.id, label,
+                        )
+                        entry["met"] = "NEED_CHECK"
+                    else:
+                        EligibilityJudgeCache.objects.update_or_create(
+                            policy=obj, eligibility_label=label,
+                            profile_signature=profile_signature,
+                            defaults={"status": status},
+                        )
+                        entry["met"] = status
 
             items.append(entry)
         return items
