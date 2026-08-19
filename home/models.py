@@ -71,7 +71,7 @@ class AgeRange(models.TextChoices):
 class IncomeCriteria(models.TextChoices):
     BASIC_LIVELIHOOD = "BASIC_LIVELIHOOD", "기초생활수급자"
     MEDIAN_INCOME = "MEDIAN_INCOME", "기준 중위소득"
-    NEAR_POVERTY = "NEAR_POVERTY", "차상위계층"
+    NEAR_POOR = "NEAR_POOR", "차상위계층"
 
 
 def validate_choice_list(value, choices_cls, field_label):
