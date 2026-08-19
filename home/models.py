@@ -140,6 +140,11 @@ class Policy(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    support_amount = models.CharField(
+    max_length=200, blank=True, null=True,
+    help_text="지원 금액 (예: 월 30만원, 최대 500만원 등 자유 텍스트)",
+    )
+
     def __str__(self):
         return self.title
 
@@ -172,3 +177,4 @@ def compute_policy_ids_hash(policies):
     ids = sorted(p.id for p in policies)
     raw = ",".join(str(i) for i in ids)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
