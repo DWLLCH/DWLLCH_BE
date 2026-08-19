@@ -9,7 +9,46 @@ class Briefing(models.Model):
         HOUSING = "HOUSING", "주거 & 일상자립"
         EMPLOYMENT = "EMPLOYMENT", "취업 & 진로"
 
+    class Color(models.TextChoices):
+        """프론트 카드 색상 박스. FE 디자인 토큰과 값이 일치해야 한다."""
+
+        BLUE = "blue", "파랑"
+        GREEN = "green", "초록"
+        RED = "red", "빨강"
+
+    class Icon(models.TextChoices):
+        """프론트에 이미 존재하는 아이콘 에셋 목록."""
+
+        CHART = "chart", "차트"
+        CLOCK = "clock", "시계"
+        COMPUTER = "computer", "컴퓨터"
+        COURT = "court", "법원"
+        DELIVERY = "delivery", "배송"
+        DOCUMENT = "document", "문서"
+        GRADUATION = "graduation", "학사모"
+        GRAPH = "graph", "그래프"
+        HEART = "heart", "하트"
+        HOME = "home", "집"
+        IDCARD = "idcard", "신분증"
+        LETTER = "letter", "편지"
+        MAGNIFIER = "magnifier", "돋보기"
+        MONEY = "money", "돈"
+        PHONE = "phone", "전화"
+        PIGBANK = "pigbank", "돼지저금통"
+
     category = models.CharField(max_length=20, choices=Category.choices)
+    color = models.CharField(
+        max_length=10,
+        choices=Color.choices,
+        default=Color.BLUE,
+        help_text="카드 색상 박스",
+    )
+    icon = models.CharField(
+        max_length=20,
+        choices=Icon.choices,
+        default=Icon.DOCUMENT,
+        help_text="카드 아이콘 (FE 아이콘 에셋 이름)",
+    )
     title = models.CharField(max_length=200)
     card_summary = models.CharField(max_length=200, help_text="카드에 보이는 고정 짧은 설명")
     source_facts = models.JSONField(default=list, help_text="AI 요약의 재료가 되는 검증된 팩트 리스트")
