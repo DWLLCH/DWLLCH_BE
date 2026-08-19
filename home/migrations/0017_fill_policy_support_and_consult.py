@@ -7,8 +7,9 @@
 - 헤더는 5개지만 실제 데이터는 6개 열이다.
   5번째 열은 상담처 설명 문구, 6번째 열이 실제 URL이라 consult_link 에는 6번째 열을 쓴다.
   (5번째 열 설명 문구는 저장할 필드가 없어 버린다.)
-- Policy 모델에 policy_id 컬럼이 없어 실제 매칭은 policy_name(title) 으로 한다.
-  policy_id 는 원본 대조용으로만 남겨 둔다.
+- 원본 URL 에 붙어 있던 추적 파라미터(utm_source 등)는 제거하고 저장한다.
+- 이 마이그레이션 시점에는 Policy 에 policy_id 컬럼이 없어 매칭은 policy_name(title) 으로 한다.
+  (policy_id 컬럼은 0018 에서 추가되고 0019 에서 채워진다.)
 - 통합일정표에서 온 정책은 이 표의 대상이 아니며,
   매칭되는 정책이 없는 행은 조용히 건너뛴다.
 
@@ -26,7 +27,7 @@ CONSULT_ROWS = [
         "자립준비청년 자립수당 지급 (중앙부처)",
         "매월 50만 원",
         "044-202-3431",
-        "https://www.mohw.go.kr/menu.es?mid=a10711040900&utm_source=chatgpt.com",
+        "https://www.mohw.go.kr/menu.es?mid=a10711040900",
     ),
     (
         "POL-LOC-CN01",
