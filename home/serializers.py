@@ -2,7 +2,9 @@ from rest_framework import serializers
 
 from .models import Policy, PolicyScrap
 from .services import judge_eligibility_item, GeminiRequestError
+from briefing.models import compute_profile_signature
 
+from .models import Policy, PolicyScrap, EligibilityJudgeCache
 
 class PolicyListSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
@@ -109,13 +111,30 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
         is_authenticated = bool(user and user.is_authenticated)
 
         items = []
+        profile_signature = compute_profile_signature(user) if is_authenticated else None
+
         for label in obj.eligibility_items:
             entry = {"label": label, "met": None}
+
             if is_authenticated:
-                try:
-                    entry["met"] = judge_eligibility_item(label, user)
-                except GeminiRequestError:
-                    entry["met"] = "NEED_CHECK"
+                cache = EligibilityJudgeCache.objects.filter(
+                    policy=obj, eligibility_label=label, profile_signature=profile_signature
+                ).first()
+
+                if cache:
+                    entry["met"] = cache.status
+                else:
+                    try:
+                        status = judge_eligibility_item(label, user)
+                    except GeminiRequestError:
+                        status = "NEED_CHECK"
+
+                    EligibilityJudgeCache.objects.update_or_create(
+                        policy=obj, eligibility_label=label, profile_signature=profile_signature,
+                        defaults={"status": status},
+                    )
+                    entry["met"] = status
+
             items.append(entry)
         return items
 

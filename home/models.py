@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
+from briefing.models import compute_profile_signature 
 
 import hashlib
 def validate_eligibility_items(value):
@@ -184,3 +185,15 @@ def compute_policy_ids_hash(policies):
     raw = ",".join(str(i) for i in ids)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
+ 
+
+
+class EligibilityJudgeCache(models.Model):
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, related_name="eligibility_caches")
+    eligibility_label = models.CharField(max_length=200)
+    profile_signature = models.CharField(max_length=16, db_index=True)
+    status = models.CharField(max_length=20)  # "MET" | "NEED_CHECK"
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["policy", "eligibility_label", "profile_signature"]
