@@ -116,6 +116,13 @@ class Policy(models.Model):
     AgeRange = AgeRange
     IncomeCriteria = IncomeCriteria
 
+    policy_id = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        null=True,
+        help_text="원본 정책DB의 정책 ID (예: POL-CEN-001). 외부 데이터 매칭용 키.",
+    )
     title = models.CharField(max_length=200)
     summary = models.CharField(max_length=300)
     content = models.TextField(help_text="이 지원사업은? (소개)")
