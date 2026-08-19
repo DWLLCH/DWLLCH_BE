@@ -32,12 +32,21 @@ def validate_required_document_items(value):
             )
 
         label = item.get("label")
+        description = item.get("description")
         issue_method = item.get("issueMethod")
         link_url = item.get("linkUrl")
 
         if not isinstance(label, str) or not label.strip():
             raise ValidationError(
                 "제출서류의 label은 필수 문자열입니다."
+            )
+
+        if (
+            description is not None
+            and not isinstance(description, str)
+        ):
+            raise ValidationError(
+                "description은 문자열 또는 null이어야 합니다."
             )
 
         if (
@@ -135,7 +144,11 @@ class Policy(models.Model):
     required_document_items = models.JSONField(
         default=list,
         blank=True,
-        help_text='서류 항목 리스트. 예: [{"label": "주민등록등본", "issueMethod": "정부24", "linkUrl": "https://..."}]',
+        help_text=(
+            '서류 항목 리스트. 예: [{"label": "주민등록등본", '
+            '"description": "주소, 세대 구성 정보를 확인하는 서류", '
+            '"issueMethod": "정부24", "linkUrl": "https://..."}]'
+        ),
     )
     application_method = models.TextField(help_text="언제까지 신청하나요? (신청 방법/기간)")
     required_documents = models.TextField(help_text="무엇을 준비해야 하나요? (준비 서류)")

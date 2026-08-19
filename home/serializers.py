@@ -54,6 +54,8 @@ class PolicyListSerializer(serializers.ModelSerializer):
 
 class RequiredDocumentSerializer(serializers.Serializer):
     label = serializers.CharField()
+    # 서류 설명 문구. 값이 없는 기존 항목도 키는 항상 내려가도록 default 를 둔다.
+    description = serializers.CharField(required=False, allow_null=True, default=None)
     issueMethod = serializers.CharField(allow_null=True)
     linkUrl = serializers.URLField(allow_null=True)
 
