@@ -307,3 +307,52 @@ def assess_policy_matches(policies, user):
         return _parse_response(response, PolicyMatchAssessmentResult)
     except (ValidationError, json.JSONDecodeError) as exc:
         raise GeminiRequestError from exc
+
+
+class EligibilityJudgeResult(BaseModel):
+    status: str  # "MET" or "NEED_CHECK"
+
+
+ELIGIBILITY_JUDGE_PROMPT = """
+당신은 자립준비청년 지원 정책의 자격요건 충족 여부를 판단하는 도우미입니다.
+
+다음 정책을 반드시 지키세요.
+1. 아래 "자격요건"과 "사용자 프로필"만 보고 판단하세요.
+2. 명확하게 충족한다고 판단되면 "MET"을 반환하세요.
+3. 조금이라도 불확실하거나 프로필 정보가 부족하면 "NEED_CHECK"을 반환하세요.
+4. 절대로 "불충족"으로 임의 추정하지 마세요. 확신이 없으면 무조건 NEED_CHECK입니다.
+"""
+
+
+def judge_eligibility_item(label, user):
+    client = _get_client()
+
+    profile_text = (
+        f"생년월일: {user.birth_date}\n"
+        f"보호종료 예정일: {user.protection_end_date}\n"
+        f"생활 형태: {', '.join(user.living_status) or '정보 없음'}\n"
+        f"소득 형태: {user.get_income_type_display()}"
+    )
+
+    prompt = f"""
+{ELIGIBILITY_JUDGE_PROMPT}
+
+자격요건: {label}
+
+사용자 프로필:
+{profile_text}
+"""
+
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=EligibilityJudgeResult,
+            ),
+        )
+        result = _parse_response(response, EligibilityJudgeResult)
+        return result.status
+    except GeminiRequestError:
+        return "NEED_CHECK"  # AI 실패 시에도 절대 MET으로 잘못 표시하지 않음
