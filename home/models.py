@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
+from briefing.models import compute_profile_signature 
 
 import hashlib
 def validate_eligibility_items(value):
@@ -119,8 +120,14 @@ class Policy(models.Model):
     summary = models.CharField(max_length=300)
     content = models.TextField(help_text="이 지원사업은? (소개)")
     eligibility = models.TextField(help_text="내가 신청할 수 있나요? (신청 자격)")
-    eligibility_items = models.JSONField(default=list, blank=True, validators=[validate_eligibility_items])
-    required_document_items = models.JSONField(default=list, blank=True, validators=[validate_required_document_items,])
+    eligibility_items = models.JSONField(
+    default=list,
+    help_text='자격요건 항목 리스트. 예: [{"label": "만 18세 이상 자립준비청년"}]',
+    )
+    required_document_items = models.JSONField(
+        default=list,
+        help_text='서류 항목 리스트. 예: [{"label": "주민등록등본", "issueMethod": "정부24", "linkUrl": "https://..."}]',
+    )
     application_method = models.TextField(help_text="언제까지 신청하나요? (신청 방법/기간)")
     required_documents = models.TextField(help_text="무엇을 준비해야 하나요? (준비 서류)")
     category = models.CharField(max_length=20, choices=Category.choices)
@@ -178,3 +185,15 @@ def compute_policy_ids_hash(policies):
     raw = ",".join(str(i) for i in ids)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
+ 
+
+
+class EligibilityJudgeCache(models.Model):
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, related_name="eligibility_caches")
+    eligibility_label = models.CharField(max_length=200)
+    profile_signature = models.CharField(max_length=16, db_index=True)
+    status = models.CharField(max_length=20)  # "MET" | "NEED_CHECK"
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["policy", "eligibility_label", "profile_signature"]

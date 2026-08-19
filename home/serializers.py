@@ -1,7 +1,10 @@
 from rest_framework import serializers
 
 from .models import Policy, PolicyScrap
+from .services import judge_eligibility_item, GeminiRequestError
+from briefing.models import compute_profile_signature
 
+from .models import Policy, PolicyScrap, EligibilityJudgeCache
 
 class PolicyListSerializer(serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
@@ -26,43 +29,34 @@ class PolicyListSerializer(serializers.ModelSerializer):
         ]
 
     def get_matchLevel(self, obj):
-        match_map = self.context.get(
-            "match_map",
-            {},
-        )
-
+        match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-
         if not match:
             return None
-
         return match.match_level
 
     def get_matchReason(self, obj):
-        match_map = self.context.get(
-            "match_map",
-            {},
-        )
-
+        match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-
         if not match:
             return None
-
         return match.match_reason
-    
+
+
 class RequiredDocumentSerializer(serializers.Serializer):
     label = serializers.CharField()
-    issueMethod = serializers.CharField(
-        allow_null=True,
-    )
-    linkUrl = serializers.URLField(
-        allow_null=True,
-    )
+    issueMethod = serializers.CharField(allow_null=True)
+    linkUrl = serializers.URLField(allow_null=True)
+
+
+class EligibilityItemSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    met = serializers.CharField(allow_null=True)  # "MET" | "NEED_CHECK" | None(비로그인)
+
 
 class PolicyDetailSerializer(serializers.ModelSerializer):
     applicationMethod = serializers.CharField(source="application_method")
-    eligibility = serializers.ListField(source="eligibility_items", child=serializers.CharField(), read_only=True)
+    eligibility = serializers.SerializerMethodField()
     requiredDocuments = RequiredDocumentSerializer(source="required_document_items", many=True, read_only=True)
     consultPhone = serializers.CharField(source="consult_phone", allow_null=True)
     consultLink = serializers.URLField(source="consult_link", allow_null=True)
@@ -98,30 +92,51 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_matchLevel(self, obj):
-        match_map = self.context.get(
-            "match_map",
-            {},
-        )
-
+        match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-
         if not match:
             return None
-
         return match.match_level
 
     def get_matchReason(self, obj):
-        match_map = self.context.get(
-            "match_map",
-            {},
-        )
-
+        match_map = self.context.get("match_map", {})
         match = match_map.get(obj.id)
-
         if not match:
             return None
-
         return match.match_reason
+
+    def get_eligibility(self, obj):
+        request = self.context.get("request")
+        user = request.user if request else None
+        is_authenticated = bool(user and user.is_authenticated)
+
+        items = []
+        profile_signature = compute_profile_signature(user) if is_authenticated else None
+
+        for label in obj.eligibility_items:
+            entry = {"label": label, "met": None}
+
+            if is_authenticated:
+                cache = EligibilityJudgeCache.objects.filter(
+                    policy=obj, eligibility_label=label, profile_signature=profile_signature
+                ).first()
+
+                if cache:
+                    entry["met"] = cache.status
+                else:
+                    try:
+                        status = judge_eligibility_item(label, user)
+                    except GeminiRequestError:
+                        status = "NEED_CHECK"
+
+                    EligibilityJudgeCache.objects.update_or_create(
+                        policy=obj, eligibility_label=label, profile_signature=profile_signature,
+                        defaults={"status": status},
+                    )
+                    entry["met"] = status
+
+            items.append(entry)
+        return items
 
 
 class SimilarPolicySerializer(serializers.ModelSerializer):
