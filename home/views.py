@@ -215,7 +215,10 @@ def policy_detail(request, policy_id):
                 request.user.id, policy.id,
             )
 
-    serializer = PolicyDetailSerializer(policy, context={"match_map": match_map})
+    serializer = PolicyDetailSerializer(
+        policy,
+        context={"request": request, "match_map": match_map},
+    )
 
     return success_response(
         data=serializer.data,
