@@ -251,6 +251,7 @@ def home_curation(request):
         policy_ids_hash = compute_policy_ids_hash(filtered_policies)
 
         cache = CurationMatchCache.objects.filter(
+            cache_type="CURATION",
             profile_signature=profile_signature, policy_ids_hash=policy_ids_hash
         ).first()
 
@@ -272,6 +273,7 @@ def home_curation(request):
                     for m in result.matches
                 ]
                 CurationMatchCache.objects.update_or_create(
+                    cache_type="CURATION",
                     profile_signature=profile_signature,
                     policy_ids_hash=policy_ids_hash,
                     defaults={"matched_result": matched_result},
