@@ -8,7 +8,7 @@ class BriefingListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Briefing
-        fields = ["id", "category", "title", "cardSummary", "thumbnail"]
+        fields = ["id", "category", "title", "cardSummary", "thumbnail", "color", "icon"]
 
     cardSummary = serializers.CharField(source="card_summary")
 
