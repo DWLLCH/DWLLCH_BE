@@ -276,6 +276,147 @@ class PolicyListMatchTest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+
+class PolicyGroupFilterTest(APITestCase):
+    def setUp(self):
+        self.url = "/policies"
+
+        self.residential_under_18 = Policy.objects.create(
+            title="아동양육시설 만 18세 미만 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            protection_types=[Policy.ProtectionType.RESIDENTIAL_CARE],
+            age_ranges=[Policy.AgeRange.UNDER_18],
+        )
+
+        self.residential_and_group_home = Policy.objects.create(
+            title="아동양육시설+공동생활가정 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            protection_types=[
+                Policy.ProtectionType.RESIDENTIAL_CARE,
+                Policy.ProtectionType.GROUP_HOME,
+            ],
+        )
+
+        self.income_only = Policy.objects.create(
+            title="기초생활수급자 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.FINANCE,
+            target_condition="금융",
+            organization="기관",
+            income_criteria=[Policy.IncomeCriteria.BASIC_LIVELIHOOD],
+        )
+
+        self.unrelated_policy = Policy.objects.create(
+            title="필터 조건 없는 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.ETC,
+            target_condition="기타",
+            organization="기관",
+        )
+
+    def test_no_filter_returns_all_policies(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        ids = [policy["id"] for policy in response.data["content"]]
+
+        self.assertIn(self.residential_under_18.id, ids)
+        self.assertIn(self.unrelated_policy.id, ids)
+
+    def test_single_value_filter_matches_policy(self):
+        response = self.client.get(self.url, {"protectionType": "RESIDENTIAL_CARE"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        ids = [policy["id"] for policy in response.data["content"]]
+
+        self.assertIn(self.residential_under_18.id, ids)
+        self.assertIn(self.residential_and_group_home.id, ids)
+        self.assertNotIn(self.income_only.id, ids)
+        self.assertNotIn(self.unrelated_policy.id, ids)
+
+    def test_same_group_multi_select_is_and(self):
+        response = self.client.get(
+            self.url,
+            {"protectionType": "RESIDENTIAL_CARE,GROUP_HOME"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        ids = [policy["id"] for policy in response.data["content"]]
+
+        self.assertIn(self.residential_and_group_home.id, ids)
+        self.assertNotIn(self.residential_under_18.id, ids)
+
+    def test_cross_group_filter_is_or(self):
+        response = self.client.get(
+            self.url,
+            {
+                "protectionType": "RESIDENTIAL_CARE,GROUP_HOME",
+                "incomeCriteria": "BASIC_LIVELIHOOD",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        ids = [policy["id"] for policy in response.data["content"]]
+
+        self.assertIn(self.residential_and_group_home.id, ids)
+        self.assertIn(self.income_only.id, ids)
+        self.assertNotIn(self.residential_under_18.id, ids)
+        self.assertNotIn(self.unrelated_policy.id, ids)
+
+    def test_filter_combines_with_category(self):
+        response = self.client.get(
+            self.url,
+            {"protectionType": "RESIDENTIAL_CARE", "category": "FINANCE"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        ids = [policy["id"] for policy in response.data["content"]]
+
+        self.assertEqual(ids, [])
+
+    def test_invalid_protection_type_fails(self):
+        response = self.client.get(self.url, {"protectionType": "INVALID"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_age_range_fails(self):
+        response = self.client.get(self.url, {"ageRange": "INVALID"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_income_criteria_fails(self):
+        response = self.client.get(self.url, {"incomeCriteria": "INVALID"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 class PolicyScrapTest(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(
