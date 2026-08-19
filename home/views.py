@@ -17,6 +17,9 @@ from .models import (
     Policy,
     PolicyScrap,
     CurationMatchCache,
+    ProtectionType,
+    AgeRange,
+    IncomeCriteria,
     compute_policy_ids_hash,
 )
 from .serializers import (
@@ -31,6 +34,65 @@ from .services import get_policy_chatbot_answer, match_policies_by_condition, as
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+POLICY_FILTER_GROUPS = (
+    ("protectionType", "protection_types", ProtectionType),
+    ("ageRange", "age_ranges", AgeRange),
+    ("incomeCriteria", "income_criteria", IncomeCriteria),
+)
+
+
+def _parse_multi_param(request, param_name):
+    raw = request.query_params.get(param_name)
+
+    if not raw:
+        return []
+
+    return [value.strip() for value in raw.split(",") if value.strip()]
+
+
+def _validate_choice_values(param_name, values, choices_cls):
+    valid_values = {choice.value for choice in choices_cls}
+
+    invalid_values = [value for value in values if value not in valid_values]
+
+    if invalid_values:
+        raise ValidationError({
+            param_name: (
+                f"{param_name}에 유효하지 않은 값이 있습니다: "
+                f"{', '.join(invalid_values)}"
+            )
+        })
+
+
+def _apply_policy_group_filters(queryset, request):
+    """
+    보호유형/연령/소득기준 필터.
+    같은 그룹 내 복수 선택은 AND, 그룹 간 조건은 OR로 처리한다.
+    """
+    selected_groups = []
+
+    for param_name, field_name, choices_cls in POLICY_FILTER_GROUPS:
+        values = _parse_multi_param(request, param_name)
+
+        if not values:
+            continue
+
+        _validate_choice_values(param_name, values, choices_cls)
+        selected_groups.append((field_name, values))
+
+    if not selected_groups:
+        return queryset
+
+    def matches_any_group(policy):
+        for field_name, values in selected_groups:
+            policy_values = set(getattr(policy, field_name) or [])
+            if all(value in policy_values for value in values):
+                return True
+        return False
+
+    return [policy for policy in queryset if matches_any_group(policy)]
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -58,6 +120,8 @@ def policy_list(request):
                 "applicationEnd 중 하나여야 합니다."
             )
         })
+
+    queryset = _apply_policy_group_filters(queryset, request)
 
     paginator = CommonPageNumberPagination()
     page = paginator.paginate_queryset(queryset, request)
