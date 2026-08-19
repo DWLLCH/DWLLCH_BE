@@ -1,5 +1,5 @@
 from django.db import migrations
-
+from django.db.migrations.exceptions import IrreversibleError
 
 def migrate_policy_detail_structure(apps, schema_editor):
     Policy = apps.get_model("home", "Policy")
@@ -42,18 +42,10 @@ def migrate_policy_detail_structure(apps, schema_editor):
 
 
 def reverse_policy_detail_structure(apps, schema_editor):
-    Policy = apps.get_model("home", "Policy")
-
-    for policy in Policy.objects.all():
-        policy.eligibility = ", ".join(policy.eligibility_items or [])
-
-        policy.required_documents = ", ".join(
-            item.get("label", "")
-            for item in (policy.required_document_items or [])
-            if item.get("label")
-        )
-
-        policy.save(update_fields=["eligibility", "required_documents"])
+    raise IrreversibleError(
+        "Policy document issue methods and links cannot be represented "
+        "by the legacy schema."
+    )
 
 
 class Migration(migrations.Migration):

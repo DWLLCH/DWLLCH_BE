@@ -1,8 +1,61 @@
 from django.conf import settings
 from django.db import models
+from django.core.exceptions import ValidationError
 
 import hashlib
+def validate_eligibility_items(value):
+    if not isinstance(value, list):
+        raise ValidationError(
+            "eligibility_items는 배열이어야 합니다."
+        )
 
+    if not all(
+        isinstance(item, str)
+        for item in value
+    ):
+        raise ValidationError(
+            "eligibility_items의 모든 항목은 문자열이어야 합니다."
+        )
+
+
+def validate_required_document_items(value):
+    if not isinstance(value, list):
+        raise ValidationError(
+            "required_document_items는 배열이어야 합니다."
+        )
+
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValidationError(
+                "required_document_items의 각 항목은 객체여야 합니다."
+            )
+
+        label = item.get("label")
+        issue_method = item.get("issueMethod")
+        link_url = item.get("linkUrl")
+
+        if not isinstance(label, str) or not label.strip():
+            raise ValidationError(
+                "제출서류의 label은 필수 문자열입니다."
+            )
+
+        if (
+            issue_method is not None
+            and not isinstance(issue_method, str)
+        ):
+            raise ValidationError(
+                "issueMethod는 문자열 또는 null이어야 합니다."
+            )
+
+        if (
+            link_url is not None
+            and not isinstance(link_url, str)
+        ):
+            raise ValidationError(
+                "linkUrl은 문자열 또는 null이어야 합니다."
+            )
+
+        
 class Policy(models.Model):
     class Category(models.TextChoices):
         HOUSING = "HOUSING", "주거"
@@ -16,10 +69,10 @@ class Policy(models.Model):
     summary = models.CharField(max_length=300)
     content = models.TextField(help_text="이 지원사업은? (소개)")
     eligibility = models.TextField(help_text="내가 신청할 수 있나요? (신청 자격)")
-    eligibility_items = models.JSONField(default=list, blank=True)
+    eligibility_items = models.JSONField(default=list, blank=True, validators=[validate_eligibility_items])
+    required_document_items = models.JSONField(default=list, blank=True, validators=[validate_required_document_items,])
     application_method = models.TextField(help_text="언제까지 신청하나요? (신청 방법/기간)")
     required_documents = models.TextField(help_text="무엇을 준비해야 하나요? (준비 서류)")
-    required_document_items = models.JSONField(default=list, blank=True)
     category = models.CharField(max_length=20, choices=Category.choices)
     target_condition = models.TextField(help_text="AI 큐레이션 매칭용 키워드 텍스트")
     organization = models.CharField(max_length=100, help_text="주관 기관")

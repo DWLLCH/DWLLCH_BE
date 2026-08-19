@@ -50,12 +50,20 @@ class PolicyListSerializer(serializers.ModelSerializer):
             return None
 
         return match.match_reason
-
+    
+class RequiredDocumentSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    issueMethod = serializers.CharField(
+        allow_null=True,
+    )
+    linkUrl = serializers.URLField(
+        allow_null=True,
+    )
 
 class PolicyDetailSerializer(serializers.ModelSerializer):
     applicationMethod = serializers.CharField(source="application_method")
     eligibility = serializers.ListField(source="eligibility_items", child=serializers.CharField(), read_only=True)
-    requiredDocuments = serializers.JSONField(source="required_document_items", read_only=True)
+    requiredDocuments = RequiredDocumentSerializer(source="required_document_items", many=True, read_only=True)
     consultPhone = serializers.CharField(source="consult_phone", allow_null=True)
     consultLink = serializers.URLField(source="consult_link", allow_null=True)
     regionSido = serializers.CharField(source="region_sido", allow_null=True)

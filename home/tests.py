@@ -416,3 +416,38 @@ class PolicyScrapTest(APITestCase):
         response = self.client.get("/policies/scraps")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+def test_policy_required_documents_structure(self):
+    self.policy.required_document_items = [
+        {
+            "label": "주민등록등본",
+            "issueMethod": "정부24 발급",
+            "linkUrl": "https://www.gov.kr",
+        }
+    ]
+    self.policy.save()
+
+    response = self.client.get(
+        f"/policies/{self.policy.id}"
+    )
+
+    self.assertEqual(
+        response.status_code,
+        status.HTTP_200_OK,
+    )
+
+    document = response.data["data"]["requiredDocuments"][0]
+
+    self.assertEqual(
+        document["label"],
+        "주민등록등본",
+    )
+    self.assertEqual(
+        document["issueMethod"],
+        "정부24 발급",
+    )
+    self.assertEqual(
+        document["linkUrl"],
+        "https://www.gov.kr",
+    )
