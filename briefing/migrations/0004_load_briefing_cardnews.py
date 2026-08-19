@@ -14,8 +14,8 @@ content 는 "## 섹션 / ### 하위 항목" 형태의 Markdown 으로 합쳐 넣
 card_summary 는 확정 문구를 아직 받지 못해 제목을 줄인 임시 문구를 넣었다.
 문구가 나오면 별도 마이그레이션이나 어드민에서 교체한다.
 
-카드 색상/아이콘(color, icon)은 이 브랜치 기준 Briefing 모델에 아직 없어
-여기서 채우지 않는다. #107 이 머지된 뒤 별도 마이그레이션에서 지정한다.
+color 는 카테고리별로 0003 과 같은 규칙을 쓰고,
+icon 은 카드 주제에 맞춰 카드별로 지정한다.
 
 title 기준 update_or_create 라 재실행해도 안전하다.
 """
@@ -28,6 +28,8 @@ BRIEFINGS = [
         "category": "FINANCE",
         "title": "자립정착금, 어떻게 써야 잘 썼다고 소문이 날까?",
         "card_summary": "자립정착금 쓰는 법을 알려드려요",
+        "color": "green",
+        "icon": "money",
         "source_facts": [
             "자립정착금은 주거 보증금 중심으로 계획적 분할 사용하기",
             "필수 가전·가구는 중고 및 청년 지원 사업으로 알뜰하게 준비하기",
@@ -56,6 +58,8 @@ BRIEFINGS = [
         "category": "FINANCE",
         "title": "자립 준비 중인 청년 필수 금융 치트키",
         "card_summary": "자립 준비 청년의 필수 금융 정보를 모았어요",
+        "color": "green",
+        "icon": "pigbank",
         "source_facts": [
             "자립정착금은 목적에 맞게 계획적으로 사용하기",
             "신용관리, 처음부터 습관을 들이면 신용이 자산이 돼요",
@@ -103,6 +107,8 @@ BRIEFINGS = [
         "category": "FINANCE",
         "title": "월세부터 신용점수까지",
         "card_summary": "월세와 신용점수 관리법을 알려드려요",
+        "color": "green",
+        "icon": "chart",
         "source_facts": [
             "통신비·공과금 성실 납부로 신용점수 쉽게 올리기",
             "낸 월세는 연말정산 세액공제로 15~17% 환급받기",
@@ -131,6 +137,8 @@ BRIEFINGS = [
         "category": "FINANCE",
         "title": "갑자기 생긴 목돈, 어디부터 관리해야 할까?",
         "card_summary": "갑자기 생긴 목돈 관리법을 알려드려요",
+        "color": "green",
+        "icon": "graph",
         "source_facts": [
             "목돈은 일단 고금리 파킹통장에 넣고 2주간 쿨링타임 갖기",
             "고금리 대출 상환과 3~6개월 치 비상금 확보를 최우선하기",
@@ -159,6 +167,8 @@ BRIEFINGS = [
         "category": "FINANCE",
         "title": "대출받기 전 꼭 알아야 하는 모든 것",
         "card_summary": "대출 전 꼭 알아야 할 것들을 정리했어요",
+        "color": "green",
+        "icon": "document",
         "source_facts": [
             "DSR 규제와 내게 맞는 상환 방식(원리금균등 등) 정확히 알기",
             "햇살론 유스·버팀목 전세대출 등 정부 정책 대출 우선 이용하기",
@@ -187,6 +197,8 @@ BRIEFINGS = [
         "category": "FINANCE",
         "title": "신용카드 만들기 전 알아둘 것",
         "card_summary": "신용카드 만들기 전 확인할 점을 알려드려요",
+        "color": "green",
+        "icon": "idcard",
         "source_facts": [
             "카드 한도의 30~50% 이내만 일시불로 사용해 신용점수 높이기",
             "혜택만 보지 말고 전월 실적과 연회비 조건 꼼꼼히 따져보기",
@@ -215,6 +227,8 @@ BRIEFINGS = [
         "category": "HOUSING",
         "title": "부동산 계약 시 명심해야 할 3가지",
         "card_summary": "부동산 계약 전 확인할 3가지를 알려드려요",
+        "color": "blue",
+        "icon": "document",
         "source_facts": [
             "등기부등본 갑구(소유자)와 을구(근저당·대출) 꼼꼼히 확인하기",
             "전세대출 불가 시 계약금 반환 등 보증금 보호 특약 필수 기재",
@@ -243,6 +257,8 @@ BRIEFINGS = [
         "category": "HOUSING",
         "title": "일상자립, 국가가 곁에서 도와드려요",
         "card_summary": "일상자립을 돕는 국가 지원을 모았어요",
+        "color": "blue",
+        "icon": "heart",
         "source_facts": [
             "LH 청년 매입·전세임대와 청년월세지원 등 주거 혜택 챙기기",
             "자립지원전담기관의 1:1 전담 케어 및 마음건강 심리상담 활용하기",
@@ -271,6 +287,8 @@ BRIEFINGS = [
         "category": "HOUSING",
         "title": "관리비, 어디까지 내야 할까?",
         "card_summary": "관리비 항목과 환급받는 법을 알려드려요",
+        "color": "blue",
+        "icon": "magnifier",
         "source_facts": [
             "공용관리비와 개별사용료 항목 꼼꼼히 확인하고 비교하기",
             "매달 대납한 장기수선충당금은 이사 나갈 때 집주인에게 환급받기",
@@ -299,6 +317,8 @@ BRIEFINGS = [
         "category": "HOUSING",
         "title": "자취생이라면 꼭 알아야 할 생활 꿀팁",
         "card_summary": "자취 생활비 아끼는 꿀팁을 알려드려요",
+        "color": "blue",
+        "icon": "home",
         "source_facts": [
             "마감 세일·소포장 식재료와 냉동 소분으로 식비 30만 원 아끼기",
             "에어컨 인버터 가동과 적정 온돌 온도로 공과금 줄이기",
@@ -327,6 +347,8 @@ BRIEFINGS = [
         "category": "HOUSING",
         "title": "집주인에게 이런 말을 들었다면?",
         "card_summary": "집주인과 문제가 생겼을 때 대처법을 알려드려요",
+        "color": "blue",
+        "icon": "court",
         "source_facts": [
             "만기 후 보증금 미반환 시 '임차권등기명령'으로 대항력 유지하기",
             "보일러·누수 등 주요 시설 고장은 민법상 집주인이 수리 의무 부담",
@@ -356,6 +378,8 @@ BRIEFINGS = [
         "category": "HOUSING",
         "title": "전세와 월세, 나에게 맞는 집은?",
         "card_summary": "전세와 월세, 나에게 맞는 선택을 도와드려요",
+        "color": "blue",
+        "icon": "chart",
         "source_facts": [
             "고정비 절감엔 전세, 초기 자금과 안전성 면에선 월세가 유리",
             "청년 정책전세대출(버팀목 등) 자격이 된다면 월세보다 비용 절감",
@@ -385,6 +409,8 @@ BRIEFINGS = [
         "category": "EMPLOYMENT",
         "title": "선배들이 알려주는 취업 꿀팁",
         "card_summary": "선배들의 취업 노하우를 정리했어요",
+        "color": "red",
+        "icon": "graduation",
         "source_facts": [
             "알바나 대외활동 경험을 '문제 해결-성과' 중심으로 구조화하기",
             "채용 공고(JD)의 자격 요건 키워드를 자소서에 적극 반영하기",
@@ -413,6 +439,8 @@ BRIEFINGS = [
         "category": "EMPLOYMENT",
         "title": "면접에서 자주 나오는 질문 모음",
         "card_summary": "면접 단골 질문과 답변법을 알려드려요",
+        "color": "red",
+        "icon": "phone",
         "source_facts": [
             "1분 자기소개·지원동기·장단점은 직무 역량과 연결해 준비하기",
             "공백기와 갈등 해결 질문엔 자기계발 노력과 조율 과정 솔직히 답변",
@@ -441,6 +469,8 @@ BRIEFINGS = [
         "category": "EMPLOYMENT",
         "title": "취업 전에 받을 수 있는 지원금",
         "card_summary": "취업 준비 중 받을 수 있는 지원금을 모았어요",
+        "color": "red",
+        "icon": "money",
         "source_facts": [
             "국민취업지원제도(최대 300만 원)와 내일배움카드 적극 활용하기",
             "지자체 청년수당, 면접 정장 무료 대여, 자격증 응시료 지원 챙기기",
@@ -469,6 +499,8 @@ BRIEFINGS = [
         "category": "EMPLOYMENT",
         "title": "자립준비청년 취업 지원제도",
         "card_summary": "자립준비청년 취업 지원제도를 알려드려요",
+        "color": "red",
+        "icon": "idcard",
         "source_facts": [
             "국취제 1유형 우선 선발 및 공공기관 청년인턴 우대 혜택 누리기",
             "전담기관 1:1 커리어 코칭 및 현직자 선배 멘토링 프로그램 참여",
@@ -497,6 +529,8 @@ BRIEFINGS = [
         "category": "EMPLOYMENT",
         "title": "첫 월급, 어떻게 관리하면 좋을까?",
         "card_summary": "첫 월급 관리하는 법을 알려드려요",
+        "color": "red",
+        "icon": "pigbank",
         "source_facts": [
             "세전 연봉과 실수령액, 4대 보험 공제 내역 정확히 파악하기",
             "'저축 50% : 생활비 30% : 비상금 20%' 황금 비율 실천하기",
@@ -525,6 +559,8 @@ BRIEFINGS = [
         "category": "EMPLOYMENT",
         "title": "이력서에 뭘 써야 할지 모르겠다면?",
         "card_summary": "이력서 쓰는 법을 알려드려요",
+        "color": "red",
+        "icon": "document",
         "source_facts": [
             "상황-과제-행동-결과로 정리하는 'STAR 기법'으로 자소서 작성",
             "단순 알바·동아리 활동도 직무 역량과 연결해 차별화된 소재 발굴",
@@ -571,7 +607,7 @@ def unload_briefings(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("briefing", "0001_initial"),
+        ("briefing", "0003_fill_briefing_card_visual"),
     ]
 
     operations = [
