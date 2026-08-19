@@ -8,7 +8,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import APIException, ValidationError
-
+from datetime import timedelta
+from django.utils import timezone
 from briefing.models import compute_profile_signature
 from common.pagination import CommonPageNumberPagination
 from common.responses import success_response
@@ -42,6 +43,7 @@ POLICY_FILTER_GROUPS = (
 )
 
 
+
 def _parse_multi_param(request, param_name):
     raw = request.query_params.get(param_name)
 
@@ -49,7 +51,45 @@ def _parse_multi_param(request, param_name):
         return []
 
     return [value.strip() for value in raw.split(",") if value.strip()]
+CACHE_VALID_DURATION = timedelta(days=1)
 
+
+def get_or_assess_policy_matches(policies, user):
+    if not policies:
+        return {}
+
+    profile_signature = compute_profile_signature(user)
+    policy_ids_hash = compute_policy_ids_hash(policies)
+    cutoff = timezone.now() - CACHE_VALID_DURATION
+
+    cache = CurationMatchCache.objects.filter(
+        cache_type=CurationMatchCache.CacheType.POLICY_MATCH,
+        profile_signature=profile_signature,
+        policy_ids_hash=policy_ids_hash,
+        created_at__gte=cutoff,
+    ).first()
+
+    if cache:
+        return {item["policy_id"]: item for item in cache.matched_result}
+
+    result = assess_policy_matches(policies, user)
+    matched_result = [
+        {
+            "policy_id": m.policy_id,
+            "match_level": m.match_level,
+            "match_reason": m.match_reason,
+        }
+        for m in result.matches
+    ]
+
+    CurationMatchCache.objects.update_or_create(
+        cache_type=CurationMatchCache.CacheType.POLICY_MATCH,
+        profile_signature=profile_signature,
+        policy_ids_hash=policy_ids_hash,
+        defaults={"matched_result": matched_result},
+    )
+
+    return {item["policy_id"]: item for item in matched_result}
 
 def _validate_choice_values(param_name, values, choices_cls):
     valid_values = {choice.value for choice in choices_cls}
@@ -134,17 +174,10 @@ def policy_list(request):
         and page
     ):
         try:
-            result = assess_policy_matches(page, request.user)
-
-            match_map = {
-                match.policy_id: match
-                for match in result.matches
-            }
-
+            match_map = get_or_assess_policy_matches(page, request.user)
         except GeminiRequestError:
             logger.exception(
-                "Gemini policy match assessment failed: "
-                "user_id=%s",
+                "Gemini policy match assessment failed: user_id=%s",
                 request.user.id,
             )
 
@@ -170,22 +203,11 @@ def policy_detail(request, policy_id):
         and request.user.profile_completed
     ):
         try:
-            result = assess_policy_matches(
-                [policy],
-                request.user,
-            )
-
-            match_map = {
-                match.policy_id: match
-                for match in result.matches
-            }
-
+            match_map = get_or_assess_policy_matches([policy], request.user)
         except GeminiRequestError:
             logger.exception(
-                "Gemini policy detail match assessment failed: "
-                "user_id=%s, policy_id=%s",
-                request.user.id,
-                policy.id,
+                "Gemini policy detail match assessment failed: user_id=%s, policy_id=%s",
+                request.user.id, policy.id,
             )
 
     serializer = PolicyDetailSerializer(policy, context={"match_map": match_map})
