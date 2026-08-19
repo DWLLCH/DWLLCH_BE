@@ -129,13 +129,51 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+IS_PRODUCTION = os.getenv("ENVIRONMENT") == "production"
 
+if IS_PRODUCTION:
+    required_rds_settings = {
+        "RDS_DB_NAME": os.getenv("RDS_DB_NAME"),
+        "RDS_USERNAME": os.getenv("RDS_USERNAME"),
+        "RDS_PASSWORD": os.getenv("RDS_PASSWORD"),
+        "RDS_HOSTNAME": os.getenv("RDS_HOSTNAME"),
+    }
+
+    missing_settings = [
+        name
+        for name, value in required_rds_settings.items()
+        if not value
+    ]
+
+    if missing_settings:
+        raise RuntimeError(
+            "Missing required RDS settings: "
+            + ", ".join(missing_settings)
+        )
+
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": required_rds_settings["RDS_DB_NAME"],
+            "USER": required_rds_settings["RDS_USERNAME"],
+            "PASSWORD": required_rds_settings["RDS_PASSWORD"],
+            "HOST": required_rds_settings["RDS_HOSTNAME"],
+            "PORT": os.getenv("RDS_PORT", "5432"),
+            "OPTIONS": {
+                "sslmode": "verify-full",
+                "sslrootcert": "/path/to/global-bundle.pem",
+                "connect_timeout": 5,
+            },
+        }
+    }
+
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
