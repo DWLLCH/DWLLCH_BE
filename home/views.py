@@ -110,6 +110,7 @@ def _apply_policy_group_filters(queryset, request):
     """
     보호유형/연령/소득기준 필터.
     같은 그룹 내 복수 선택은 AND, 그룹 간 조건은 OR로 처리한다.
+    정책 쪽 값이 비어 있으면 해당 조건에 제한이 없다는 뜻이므로 항상 매칭한다.
     """
     selected_groups = []
 
@@ -128,6 +129,11 @@ def _apply_policy_group_filters(queryset, request):
     def matches_any_group(policy):
         for field_name, values in selected_groups:
             policy_values = set(getattr(policy, field_name) or [])
+
+            # 대상이 지정되지 않은 정책 = 해당 조건에 제한이 없는 정책
+            if not policy_values:
+                return True
+
             if all(value in policy_values for value in values):
                 return True
         return False
