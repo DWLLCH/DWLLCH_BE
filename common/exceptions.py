@@ -41,9 +41,13 @@ def custom_exception_handler(exc, context):
         code = "COMMON_400_INVALID_INPUT"
         message = "요청 값이 올바르지 않습니다."
         
-    else:
+    elif status_code == 500:
         code = "COMMON_500_SERVER_ERROR"
         message = "서버 내부 오류가 발생했습니다."
+
+    else:
+        code = f"COMMON_{status_code}_ERROR"
+        message = response.data.get("detail", "오류가 발생했습니다.") if isinstance(response.data, dict) else "오류가 발생했습니다."
 
     data = response.data if status_code == 400 else None
 
