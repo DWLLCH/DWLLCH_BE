@@ -1,7 +1,12 @@
 from datetime import date
+from io import BytesIO
+import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -16,6 +21,17 @@ from home.services import (
 from .models import Application, Notification
 
 User = get_user_model()
+
+
+def create_test_image():
+    image_bytes = BytesIO()
+    Image.new("RGB", (1, 1)).save(image_bytes, format="JPEG")
+
+    return SimpleUploadedFile(
+        "profile.jpg",
+        image_bytes.getvalue(),
+        content_type="image/jpeg",
+    )
 
 
 class OnboardingProfileTest(APITestCase):
@@ -172,6 +188,96 @@ class OnboardingProfileTest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ProfileImageTest(APITestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.media_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
+        self.addCleanup(self.media_directory.cleanup)
+
+        self.user = User.objects.create_user(
+            email="profile-image@example.com",
+            username="profileimage",
+            password="Test1234!",
+        )
+        self.client.force_authenticate(user=self.user)
+        self.profile_url = "/mypage/profile"
+        self.image_url = "/mypage/profile/image"
+
+    def test_profile_image_upload_success(self):
+        response = self.client.patch(
+            self.image_url,
+            {"profileImage": create_test_image()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            "/media/users/profile/",
+            response.data["data"]["profileImage"],
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(
+            self.user.profile_image.name.startswith("users/profile/")
+        )
+
+    def test_profile_image_update_success(self):
+        self.client.patch(
+            self.image_url,
+            {"profileImage": create_test_image()},
+            format="multipart",
+        )
+        self.user.refresh_from_db()
+        previous_image_name = self.user.profile_image.name
+
+        response = self.client.patch(
+            self.image_url,
+            {"profileImage": create_test_image()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertNotEqual(self.user.profile_image.name, previous_image_name)
+
+    def test_profile_get_contains_profile_image_url(self):
+        self.client.patch(
+            self.image_url,
+            {"profileImage": create_test_image()},
+            format="multipart",
+        )
+
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            response.data["data"]["profileImage"].startswith(
+                "http://testserver/media/users/profile/"
+            )
+        )
+
+    def test_profile_get_without_image_returns_null(self):
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["data"]["profileImage"])
+
+    def test_unauthenticated_profile_image_upload_fails(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.patch(
+            self.image_url,
+            {"profileImage": create_test_image()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 class NotificationTest(APITestCase):
     def setUp(self):

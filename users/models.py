@@ -84,6 +84,11 @@ class User(AbstractUser):
     support_received = models.JSONField(default=list, blank=True)
     needed_help = models.JSONField(default=list, blank=True)
     profile_completed = models.BooleanField(default=False)
+    profile_image = models.ImageField(
+        upload_to="users/profile/",
+        null=True,
+        blank=True,
+    )
 
     USERNAME_FIELD = "email"
 
