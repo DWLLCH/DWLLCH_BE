@@ -26,6 +26,10 @@ class RegionSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    profileImage = serializers.ImageField(
+        source="profile_image",
+        read_only=True,
+    )
     birthDate = serializers.DateField(source="birth_date", read_only=True)
     region = RegionSerializer(source="*", required=False)
     protectionEndDate = serializers.DateField(source="protection_end_date", required=False, allow_null=True)
@@ -69,6 +73,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = [
             "email",
             "username",
+            "profileImage",
             "birthDate",
             "region",
             "protectionEndDate",
@@ -115,6 +120,17 @@ class ProfileSerializer(serializers.ModelSerializer):
         if len(value) > 3:
             raise serializers.ValidationError("최대 3개까지 선택할 수 있습니다.")
         return value
+
+
+class ProfileImageSerializer(serializers.ModelSerializer):
+    profileImage = serializers.ImageField(
+        source="profile_image",
+        required=True,
+    )
+
+    class Meta:
+        model = User
+        fields = ["profileImage"]
 
 
 class ApplicationSerializer(PolicyMatchMixin, serializers.ModelSerializer):

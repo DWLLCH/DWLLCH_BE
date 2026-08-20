@@ -4,6 +4,8 @@ from django.db import transaction
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import parser_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
@@ -18,6 +20,7 @@ from .models import Application, ChecklistItem, Notification
 from .serializers import (
     MypageStatusSerializer,
     ProfileSerializer,
+    ProfileImageSerializer,
     ApplicationSerializer,
     ApplicationStatusUpdateSerializer,
     ChecklistItemSerializer,
@@ -55,7 +58,10 @@ def mypage_profile(request):
     user = request.user
 
     if request.method == "GET":
-        serializer = ProfileSerializer(user)
+        serializer = ProfileSerializer(
+            user,
+            context={"request": request},
+        )
         return success_response(
             data=serializer.data,
             message="프로필 정보를 조회했습니다.",
@@ -91,12 +97,35 @@ def mypage_profile(request):
                 status_code=status.HTTP_201_CREATED,
             )
 
-    serializer = ProfileSerializer(user, data=request.data, partial=True)
+    serializer = ProfileSerializer(
+        user,
+        data=request.data,
+        partial=True,
+        context={"request": request},
+    )
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return success_response(
         data=serializer.data,
         message="프로필 정보가 수정되었습니다.",
+    )
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def mypage_profile_image(request):
+    serializer = ProfileImageSerializer(
+        request.user,
+        data=request.data,
+        context={"request": request},
+    )
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+
+    return success_response(
+        data=serializer.data,
+        message="프로필 이미지가 수정되었습니다.",
     )
 
 
