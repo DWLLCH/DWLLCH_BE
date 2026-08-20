@@ -4,10 +4,12 @@ from pathlib import Path
 from django.conf import settings
 from django.db import models
 
+from chat.uploads import CONTENT_TYPE_BY_SUFFIX
+
 
 def risk_check_upload_path(instance, filename):
     suffix = Path(filename).suffix.lower()
-    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+    if suffix not in CONTENT_TYPE_BY_SUFFIX:
         suffix = ".bin"
     return f"chat/risk-check/{instance.session_id}/{uuid.uuid4().hex}{suffix}"
 
@@ -59,6 +61,7 @@ class RiskCheckMessage(models.Model):
     class MessageType(models.TextChoices):
         TEXT = "TEXT", "텍스트"
         IMAGE = "IMAGE", "이미지"
+        DOCUMENT = "DOCUMENT", "문서(PDF/DOCX)"
 
     session = models.ForeignKey(
         RiskCheckSession,
@@ -72,7 +75,7 @@ class RiskCheckMessage(models.Model):
         default=MessageType.TEXT,
     )
     content = models.TextField(blank=True)
-    file = models.ImageField(
+    file = models.FileField(
         upload_to=risk_check_upload_path,
         blank=True,
         null=True,
