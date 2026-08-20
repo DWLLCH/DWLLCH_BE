@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -198,7 +198,13 @@ def policy_list(request):
         })
 
     if sort == "applicationEnd":
-        queryset = queryset.order_by("application_end", "-id")
+        # 마감이 임박한 순서를 보여주는 정렬이므로 마감일이 없는 상시모집은 맨 뒤로 보낸다.
+        # NULL 정렬 위치는 DB 마다 달라(SQLite 는 앞, PostgreSQL 은 뒤) 명시해야
+        # 개발/운영에서 같은 순서가 나온다.
+        queryset = queryset.order_by(
+            F("application_end").asc(nulls_last=True),
+            "-id",
+        )
     elif sort == "scrapCount":
         queryset = queryset.order_by("-scrap_count", "-id")
     else:
