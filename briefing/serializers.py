@@ -20,7 +20,17 @@ class BriefingDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Briefing
-        fields = ["id", "category", "title", "cardSummary", "content", "thumbnail", "keySummary"]
+        fields = [
+            "id",
+            "category",
+            "title",
+            "cardSummary",
+            "content",
+            "thumbnail",
+            "color",
+            "icon",
+            "keySummary",
+        ]
 
     def get_keySummary(self, obj):
         return self.context.get("key_summary_bullets", [])
