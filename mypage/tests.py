@@ -1,9 +1,19 @@
+from datetime import date
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Notification
+from home.models import Policy
+from home.services import (
+    GeminiRequestError,
+    PolicyMatchAssessment,
+    PolicyMatchAssessmentResult,
+)
+
+from .models import Application, Notification
 
 User = get_user_model()
 
@@ -263,3 +273,116 @@ class NotificationTest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ApplicationMatchTest(APITestCase):
+    """신청 목록의 AI 적합도와 마감일."""
+
+    def setUp(self):
+        self.url = "/mypage/applications"
+
+        self.user = User.objects.create_user(
+            email="application@example.com",
+            username="applicationuser",
+            password="Test1234!",
+            profile_completed=True,
+            sido="서울특별시",
+            sigungu="동대문구",
+            protection_status=User.ProtectionStatus.ENDED,
+            living_status=[User.LivingStatus.JOB_SEEKING],
+            needed_help=[User.NeededHelp.HOUSING],
+            housing_situation=User.HousingSituation.BURDEN,
+        )
+
+        self.policy = Policy.objects.create(
+            title="신청 대상 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            application_end=date(2026, 12, 31),
+        )
+
+        Application.objects.create(
+            user=self.user,
+            policy=self.policy,
+            status=Application.Status.PLANNED,
+        )
+
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+    def match_result(self):
+        return PolicyMatchAssessmentResult(
+            matches=[
+                PolicyMatchAssessment(
+                    policy_id=self.policy.id,
+                    match_level="HIGH",
+                    match_reason="주거 상황과 잘 맞아요.",
+                )
+            ]
+        )
+
+    @patch("home.views.assess_policy_matches")
+    def test_application_list_includes_match_and_deadline(self, mock_assess):
+        mock_assess.return_value = self.match_result()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        application = response.data["content"][0]
+
+        self.assertEqual(application["policyId"], self.policy.id)
+        self.assertEqual(application["applicationEnd"], "2026-12-31")
+        self.assertEqual(application["matchLevel"], "HIGH")
+        self.assertEqual(application["matchReason"], "주거 상황과 잘 맞아요.")
+
+    @patch("home.views.assess_policy_matches")
+    def test_application_list_reuses_cached_match(self, mock_assess):
+        mock_assess.return_value = self.match_result()
+
+        self.client.get(self.url)
+        self.client.get(self.url)
+
+        self.assertEqual(mock_assess.call_count, 1)
+
+    @patch("home.views.assess_policy_matches")
+    def test_incomplete_profile_gets_null_match(self, mock_assess):
+        User.objects.filter(id=self.user.id).update(profile_completed=False)
+
+        application = self.client.get(self.url).data["content"][0]
+
+        self.assertIsNone(application["matchLevel"])
+        self.assertIsNone(application["matchReason"])
+        # 마감일은 매칭과 무관하게 항상 내려간다.
+        self.assertEqual(application["applicationEnd"], "2026-12-31")
+        mock_assess.assert_not_called()
+
+    @patch("home.views.assess_policy_matches")
+    def test_ai_failure_still_returns_application_list(self, mock_assess):
+        mock_assess.side_effect = GeminiRequestError("temporary failure")
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        application = response.data["content"][0]
+
+        self.assertEqual(application["policyId"], self.policy.id)
+        self.assertIsNone(application["matchLevel"])
+
+    @patch("home.views.assess_policy_matches")
+    def test_policy_without_deadline_returns_null(self, mock_assess):
+        mock_assess.return_value = PolicyMatchAssessmentResult(matches=[])
+        Policy.objects.filter(id=self.policy.id).update(application_end=None)
+
+        application = self.client.get(self.url).data["content"][0]
+
+        self.assertIsNone(application["applicationEnd"])
