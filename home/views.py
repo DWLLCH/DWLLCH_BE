@@ -180,7 +180,7 @@ def _apply_policy_group_filters(queryset, request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_list(request):
-    queryset = Policy.objects.annotate(scrap_count=Count("scraps"))
+    queryset = Policy.objects.visible().annotate(scrap_count=Count("scraps"))
 
     category = request.query_params.get("category")
     if category:
@@ -254,7 +254,7 @@ def policy_list(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def policy_detail(request, policy_id):
-    policy = get_object_or_404(Policy, id=policy_id)
+    policy = get_object_or_404(Policy.objects.visible(), id=policy_id)
 
     match_map = {}
 
@@ -283,7 +283,7 @@ def policy_detail(request, policy_id):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def home_guest(request):
-    popular_policies = Policy.objects.all().order_by("-created_at")[:5]
+    popular_policies = Policy.objects.visible().order_by("-created_at")[:5]
 
     data = {
         "bannerMessage": "자립준비청년을 위한 정책 정보를 한눈에 확인하세요.",
@@ -303,7 +303,7 @@ def home_curation(request):
     user = request.user
 
     # 1. 지역 매칭
-    region_policies = Policy.objects.filter(
+    region_policies = Policy.objects.visible().filter(
         Q(region_sido__isnull=True) | Q(region_sido="") | Q(region_sido=user.sido)
     ).order_by("-created_at")[:10]
 
@@ -325,7 +325,9 @@ def home_curation(request):
         query = Q()
         for keyword in keywords:
             query |= Q(target_condition__icontains=keyword)
-        filtered_policies = list(Policy.objects.filter(query).order_by("-created_at")[:20])
+        filtered_policies = list(
+            Policy.objects.visible().filter(query).order_by("-created_at")[:20]
+        )
 
     profile_incomplete = not user.needed_help
 
@@ -400,7 +402,7 @@ def policy_similar(request, policy_id):
     policy = get_object_or_404(Policy, id=policy_id)
 
     similar_policies = (
-        Policy.objects.filter(category=policy.category)
+        Policy.objects.visible().filter(category=policy.category)
         .exclude(id=policy.id)
         .order_by("-created_at")[:5]
     )
@@ -440,7 +442,7 @@ def policy_chatbot_query(request):
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def policy_scrap(request, policy_id):
-    policy = get_object_or_404(Policy, id=policy_id)
+    policy = get_object_or_404(Policy.objects.visible(), id=policy_id)
 
     if request.method == "POST":
         scrap, created = PolicyScrap.objects.get_or_create(user=request.user, policy=policy)

@@ -35,7 +35,7 @@ def get_policy_chatbot_answer(question: str, policy_id: int | None = None) -> Ch
 
     if policy_id:
         try:
-            policy = Policy.objects.get(id=policy_id)
+            policy = Policy.objects.visible().get(id=policy_id)
             policy_context = (
                 f"제목: {policy.title}\n"
                 f"소개: {policy.content}\n"
@@ -46,7 +46,7 @@ def get_policy_chatbot_answer(question: str, policy_id: int | None = None) -> Ch
         except Policy.DoesNotExist:
             policy_context = "해당 정책 정보를 찾을 수 없습니다."
     else:
-        related_policies = Policy.objects.filter(title__icontains=question)[:5]
+        related_policies = Policy.objects.visible().filter(title__icontains=question)[:5]
         if related_policies:
             policy_context = "\n\n".join(
                 f"[{p.title}]\n소개: {p.content}\n신청자격: {p.eligibility}"
