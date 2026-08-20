@@ -470,6 +470,20 @@ def policy_scrap_list(request):
     paginator = CommonPageNumberPagination()
     page = paginator.paginate_queryset(scraps, request)
 
-    serializer = PolicyScrapSerializer(page, many=True)
+    match_map = {}
+
+    if request.user.profile_completed and page:
+        match_map = _assess_matches_safely(
+            [scrap.policy for scrap in page],
+            request.user,
+        )
+
+    serializer = PolicyScrapSerializer(
+        page,
+        many=True,
+        context={
+            "match_map": match_map,
+        },
+    )
 
     return paginator.get_paginated_response(serializer.data)

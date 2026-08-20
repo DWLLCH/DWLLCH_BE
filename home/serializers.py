@@ -10,7 +10,30 @@ from .models import Policy, PolicyScrap, EligibilityJudgeCache
 
 logger = logging.getLogger(__name__)
 
-class PolicyListSerializer(serializers.ModelSerializer):
+class PolicyMatchMixin:
+    """AI 매칭 결과(matchLevel/matchReason)를 응답에 실어주는 공통 로직.
+
+    match_map 은 정책 id 로 키가 잡혀 있다. PolicyScrap 처럼 정책이 아닌
+    객체를 직렬화할 때는 match_policy_id 를 재정의해 정책 id 를 알려준다.
+    """
+
+    def match_policy_id(self, obj):
+        return obj.id
+
+    def _match(self, obj):
+        match_map = self.context.get("match_map", {})
+        return match_map.get(self.match_policy_id(obj))
+
+    def get_matchLevel(self, obj):
+        match = self._match(obj)
+        return match["match_level"] if match else None
+
+    def get_matchReason(self, obj):
+        match = self._match(obj)
+        return match["match_reason"] if match else None
+
+
+class PolicyListSerializer(PolicyMatchMixin, serializers.ModelSerializer):
     applicationEnd = serializers.DateField(source="application_end")
     regionSido = serializers.CharField(source="region_sido", allow_null=True)
     updatedAt = serializers.DateTimeField(source="updated_at")
@@ -36,16 +59,6 @@ class PolicyListSerializer(serializers.ModelSerializer):
             "scrapCount",
         ]
 
-    def get_matchLevel(self, obj):
-        match_map = self.context.get("match_map", {})
-        match = match_map.get(obj.id)
-        return match["match_level"] if match else None
-
-    def get_matchReason(self, obj):
-        match_map = self.context.get("match_map", {})
-        match = match_map.get(obj.id)
-        return match["match_reason"] if match else None
-
     def get_scrapCount(self, obj):
         if hasattr(obj, "scrap_count"):
             return obj.scrap_count
@@ -67,7 +80,7 @@ class EligibilityItemSerializer(serializers.Serializer):
     met = serializers.CharField(allow_null=True)  # "MET" | "NEED_CHECK" | None(비로그인)
 
 
-class PolicyDetailSerializer(serializers.ModelSerializer):
+class PolicyDetailSerializer(PolicyMatchMixin, serializers.ModelSerializer):
     applicationMethod = serializers.CharField(source="application_method")
     eligibility = serializers.SerializerMethodField()
     requiredDocuments = RequiredDocumentSerializer(source="required_document_items", many=True, read_only=True)
@@ -105,16 +118,6 @@ class PolicyDetailSerializer(serializers.ModelSerializer):
             "matchLevel",
             "matchReason",
         ]
-    def get_matchLevel(self, obj):
-        match_map = self.context.get("match_map", {})
-        match = match_map.get(obj.id)
-        return match["match_level"] if match else None
-
-    def get_matchReason(self, obj):
-        match_map = self.context.get("match_map", {})
-        match = match_map.get(obj.id)
-        return match["match_reason"] if match else None
-
     def get_eligibility(self, obj):
         request = self.context.get("request")
         user = request.user if request else None
@@ -174,11 +177,13 @@ class PolicyChatbotQuerySerializer(serializers.Serializer):
     policyId = serializers.IntegerField(source="policy_id", required=False)
 
 
-class PolicyScrapSerializer(serializers.ModelSerializer):
+class PolicyScrapSerializer(PolicyMatchMixin, serializers.ModelSerializer):
     policyId = serializers.IntegerField(source="policy.id", read_only=True)
     policyTitle = serializers.CharField(source="policy.title", read_only=True)
     category = serializers.CharField(source="policy.category", read_only=True)
     applicationEnd = serializers.DateField(source="policy.application_end", read_only=True, allow_null=True)
+    matchLevel = serializers.SerializerMethodField()
+    matchReason = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
 
     class Meta:
@@ -189,5 +194,10 @@ class PolicyScrapSerializer(serializers.ModelSerializer):
             "policyTitle",
             "category",
             "applicationEnd",
+            "matchLevel",
+            "matchReason",
             "createdAt",
         ]
+
+    def match_policy_id(self, obj):
+        return obj.policy_id

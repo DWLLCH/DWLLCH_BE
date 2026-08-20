@@ -636,3 +636,113 @@ def test_policy_required_documents_structure(self):
         document["linkUrl"],
         "https://www.gov.kr",
     )
+
+
+class PolicyScrapMatchTest(APITestCase):
+    """스크랩 목록의 AI 예상 적합도(matchLevel/matchReason)."""
+
+    def setUp(self):
+        self.url = "/policies/scraps"
+
+        self.user = User.objects.create_user(
+            email="scrapmatch@example.com",
+            username="scrapmatchuser",
+            password="Test1234!",
+            profile_completed=True,
+            sido="서울특별시",
+            sigungu="동대문구",
+            protection_status=User.ProtectionStatus.ENDED,
+            living_status=[User.LivingStatus.JOB_SEEKING],
+            needed_help=[User.NeededHelp.HOUSING],
+            housing_situation=User.HousingSituation.BURDEN,
+        )
+
+        self.policy = Policy.objects.create(
+            title="스크랩 매칭 대상 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+        )
+
+        PolicyScrap.objects.create(user=self.user, policy=self.policy)
+
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+    def match_result(self):
+        return PolicyMatchAssessmentResult(
+            matches=[
+                PolicyMatchAssessment(
+                    policy_id=self.policy.id,
+                    match_level="HIGH",
+                    match_reason="주거 상황과 잘 맞아요.",
+                )
+            ]
+        )
+
+    @patch("home.views.assess_policy_matches")
+    def test_scrap_list_includes_match_fields(self, mock_assess):
+        mock_assess.return_value = self.match_result()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        scrap = response.data["content"][0]
+
+        self.assertEqual(scrap["policyId"], self.policy.id)
+        self.assertEqual(scrap["matchLevel"], "HIGH")
+        self.assertEqual(scrap["matchReason"], "주거 상황과 잘 맞아요.")
+
+    @patch("home.views.assess_policy_matches")
+    def test_scrap_list_reuses_cached_match(self, mock_assess):
+        """두 번째 조회는 정책 단위 캐시를 써서 AI 를 다시 부르지 않는다."""
+        mock_assess.return_value = self.match_result()
+
+        self.client.get(self.url)
+        self.client.get(self.url)
+
+        self.assertEqual(mock_assess.call_count, 1)
+
+    @patch("home.views.assess_policy_matches")
+    def test_incomplete_profile_gets_null_match(self, mock_assess):
+        User.objects.filter(id=self.user.id).update(profile_completed=False)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        scrap = response.data["content"][0]
+
+        self.assertIsNone(scrap["matchLevel"])
+        self.assertIsNone(scrap["matchReason"])
+        mock_assess.assert_not_called()
+
+    @patch("home.views.assess_policy_matches")
+    def test_ai_failure_still_returns_scrap_list(self, mock_assess):
+        """매칭 실패가 스크랩 목록 조회를 막지 않는다."""
+        mock_assess.side_effect = GeminiRequestError("temporary failure")
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        scrap = response.data["content"][0]
+
+        self.assertEqual(scrap["policyId"], self.policy.id)
+        self.assertIsNone(scrap["matchLevel"])
+        self.assertIsNone(scrap["matchReason"])
+
+    def test_scrap_list_requires_authentication(self):
+        self.client.credentials()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
