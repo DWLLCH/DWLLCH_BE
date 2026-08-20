@@ -1,6 +1,49 @@
 import hashlib
 
+from django.core.exceptions import ValidationError
 from django.db import models
+
+
+def validate_content_tables(value):
+    """표형 콘텐츠 구조 검증.
+
+    프론트가 문자열을 파싱하지 않고 바로 렌더링할 수 있어야 하므로,
+    헤더와 행의 열 개수가 어긋나지 않는지까지 확인한다.
+    """
+    if not isinstance(value, list):
+        raise ValidationError("content_tables는 배열이어야 합니다.")
+
+    for table in value:
+        if not isinstance(table, dict):
+            raise ValidationError("content_tables의 각 항목은 객체여야 합니다.")
+
+        section = table.get("section")
+        headers = table.get("headers")
+        rows = table.get("rows")
+
+        if not isinstance(section, str) or not section.strip():
+            raise ValidationError("표의 section은 필수 문자열입니다.")
+
+        if not isinstance(headers, list) or not headers:
+            raise ValidationError("표의 headers는 비어있지 않은 배열이어야 합니다.")
+
+        if not all(isinstance(header, str) and header.strip() for header in headers):
+            raise ValidationError("표의 headers 항목은 모두 문자열이어야 합니다.")
+
+        if not isinstance(rows, list) or not rows:
+            raise ValidationError("표의 rows는 비어있지 않은 배열이어야 합니다.")
+
+        for row in rows:
+            if not isinstance(row, list):
+                raise ValidationError("표의 각 행은 배열이어야 합니다.")
+
+            if not all(isinstance(cell, str) for cell in row):
+                raise ValidationError("표의 셀 값은 모두 문자열이어야 합니다.")
+
+            if len(row) != len(headers):
+                raise ValidationError(
+                    f"표의 행 길이({len(row)})가 headers 개수({len(headers)})와 다릅니다."
+                )
 
 
 class Briefing(models.Model):
@@ -52,7 +95,16 @@ class Briefing(models.Model):
     title = models.CharField(max_length=200)
     card_summary = models.CharField(max_length=200, help_text="카드에 보이는 고정 짧은 설명")
     source_facts = models.JSONField(default=list, help_text="AI 요약의 재료가 되는 검증된 팩트 리스트")
-    content = models.TextField(help_text="상세 본문(번호 섹션+표 포함, Markdown). AI가 손대지 않음")
+    content = models.TextField(help_text="상세 본문(번호 섹션, Markdown). AI가 손대지 않음")
+    content_tables = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_content_tables],
+        help_text=(
+            "표로 노출되는 콘텐츠. content 의 어느 섹션에 붙는지를 section 으로 지정한다. "
+            '예: [{"section": "2. 통장 쪼개기", "headers": ["구분", "설명"], "rows": [["수입통장", "메인 허브"]]}]'
+        ),
+    )
     thumbnail = models.ImageField(upload_to="briefings/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
