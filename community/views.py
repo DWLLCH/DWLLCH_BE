@@ -47,6 +47,8 @@ from .serializers import (
     PollSerializer,
 )
 
+from mypage.models import Notification
+
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 MAX_IMAGE_COUNT = 5
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -83,9 +85,7 @@ def parse_post_request_data(request):
         except (TypeError, ValueError):
             raise ValidationError(
                 {
-                    "poll": (
-                        "poll은 올바른 JSON 문자열이어야 합니다."
-                    )
+                    "poll": ("poll은 올바른 JSON 문자열이어야 합니다.")
                 }
             )
 
@@ -97,18 +97,14 @@ def parse_post_request_data(request):
         except (TypeError, ValueError):
             raise ValidationError(
                 {
-                    "keepImageIds": (
-                        "keepImageIds는 올바른 JSON 배열이어야 합니다."
-                    )
+                    "keepImageIds": ("keepImageIds는 올바른 JSON 배열이어야 합니다.")
                 }
             )
 
         if not isinstance(keep_image_ids, list):
             raise ValidationError(
                 {
-                    "keepImageIds": (
-                        "keepImageIds는 배열 형태여야 합니다."
-                    )
+                    "keepImageIds": ("keepImageIds는 배열 형태여야 합니다.")
                 }
             )
 
@@ -140,11 +136,7 @@ def apply_poll_update(post, poll_data):
     for order, option_data in enumerate(poll_data["options"]):
         PollOption.objects.create(poll=poll, text=option_data["text"], order=order)
 
-def apply_post_image_update(
-    post,
-    keep_image_ids,
-    new_images,
-):
+def apply_post_image_update(post, keep_image_ids, new_images):
     """
     게시글 수정 시 이미지 유지/삭제/추가를 처리한다.
 
@@ -161,9 +153,7 @@ def apply_post_image_update(
         유지 이미지 뒤에 신규 이미지 추가
     """
 
-    existing_images = list(
-        post.images.order_by("order", "id")
-    )
+    existing_images = list(post.images.order_by("order", "id"))
 
     existing_image_ids = {
         image.id
@@ -201,10 +191,7 @@ def apply_post_image_update(
     for image_file in new_images:
         validate_image_file(image_file)
 
-    final_image_count = (
-        len(kept_images)
-        + len(new_images)
-    )
+    final_image_count = (len(kept_images) + len(new_images))
 
     if final_image_count > MAX_IMAGE_COUNT:
         raise ValidationError(
@@ -240,21 +227,13 @@ def apply_post_image_update(
     for order, image in enumerate(kept_images):
         if image.order != order:
             image.order = order
-            image.save(
-                update_fields=["order"]
-            )
+            image.save(update_fields=["order"])
 
     # 신규 이미지는 기존 이미지 뒤에 추가
     start_order = len(kept_images)
 
-    for offset, image_file in enumerate(
-        new_images
-    ):
-        PostImage.objects.create(
-            post=post,
-            image=image_file,
-            order=start_order + offset,
-        )
+    for offset, image_file in enumerate(new_images):
+        PostImage.objects.create(post=post, image=image_file, order=start_order + offset)
 
 @api_view(["GET", "POST"])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
@@ -279,55 +258,31 @@ def post_list(request, board_type):
                 | Q(board_type=board_type)
             )
             .annotate(
-                annotated_like_count=Count(
-                    "likes",
-                    distinct=True,
-                ),
+                annotated_like_count=Count("likes", distinct=True),
             )
-            .order_by(
-                "-is_pinned",
-                "-created_at",
-                "-id",
-            )
+            .order_by("-is_pinned", "-created_at", "-id")
         )
 
         if request.user.is_authenticated:
             posts = posts.annotate(
                 annotated_is_liked=Exists(
-                    PostLike.objects.filter(
-                        post_id=OuterRef("pk"),
-                        user=request.user,
-                    )
+                    PostLike.objects.filter(post_id=OuterRef("pk"), user=request.user)
                 )
             )
         else:
             posts = posts.annotate(
-                annotated_is_liked=Value(
-                    False,
-                    output_field=BooleanField(),
-                )
+                annotated_is_liked=Value(False, output_field=BooleanField())
             )
 
         paginator = CommonPageNumberPagination()
-        page = paginator.paginate_queryset(
-            posts,
-            request,
-        )
+        page = paginator.paginate_queryset(posts, request)
 
-        serializer = PostListSerializer(
-            page,
-            many=True,
-            context={"request": request},
-        )
+        serializer = PostListSerializer(page, many=True, context={"request": request})
 
-        return paginator.get_paginated_response(
-            serializer.data
-        )
+        return paginator.get_paginated_response(serializer.data)
 
     if not request.user.is_authenticated:
-        raise PermissionDenied(
-            "로그인이 필요합니다."
-        )
+        raise PermissionDenied("로그인이 필요합니다.")
 
     serializer = PostCreateUpdateSerializer(data=parse_post_request_data(request))
     serializer.is_valid(raise_exception=True)
@@ -346,10 +301,7 @@ def post_list(request, board_type):
     for image_file in images:
         validate_image_file(image_file)
 
-    post = serializer.save(
-        author=request.user,
-        board_type=board_type,
-    )
+    post = serializer.save(author=request.user, board_type=board_type)
 
     for order, image_file in enumerate(images):
         PostImage.objects.create(post=post, image=image_file, order=order)
@@ -377,16 +329,9 @@ def latest_post_list(request):
         Post.objects
         .select_related("author")
         .annotate(
-            annotated_like_count=Count(
-                "likes",
-                distinct=True,
-            ),
+            annotated_like_count=Count("likes", distinct=True),
         )
-        .order_by(
-            "-is_pinned",
-            "-created_at",
-            "-id",
-        )
+        .order_by("-is_pinned", "-created_at", "-id")
     )
 
     if request.user.is_authenticated:
@@ -400,75 +345,42 @@ def latest_post_list(request):
         )
     else:
         posts = posts.annotate(
-            annotated_is_liked=Value(
-                False,
-                output_field=BooleanField(),
-            )
+            annotated_is_liked=Value(False, output_field=BooleanField())
         )
 
     paginator = CommonPageNumberPagination()
-    page = paginator.paginate_queryset(
-        posts,
-        request,
-    )
+    page = paginator.paginate_queryset(posts, request)
 
-    serializer = PostListSerializer(
-        page,
-        many=True,
-        context={"request": request},
-    )
+    serializer = PostListSerializer(page, many=True, context={"request": request})
 
-    return paginator.get_paginated_response(
-        serializer.data
-    )
+    return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 @permission_classes([AllowAny])
 def post_detail(request, post_id):
-    post = get_object_or_404(
-        Post,
-        id=post_id,
-    )
+    post = get_object_or_404(Post, id=post_id)
 
     if request.method == "GET":
-        Post.objects.filter(
-            id=post.id
-        ).update(
-            view_count=F("view_count") + 1
-        )
+        Post.objects.filter(id=post.id).update(view_count=F("view_count") + 1)
 
         post.refresh_from_db()
 
-        serializer = PostDetailSerializer(
-            post,
-            context={"request": request},
-        )
+        serializer = PostDetailSerializer(post, context={"request": request})
 
-        return success_response(
-            data=serializer.data,
-            message="게시글 상세 정보를 조회했습니다.",
-        )
+        return success_response(data=serializer.data, message="게시글 상세 정보를 조회했습니다.")
 
     if (
         not request.user.is_authenticated
         or post.author != request.user
     ):
-        raise PermissionDenied(
-            "본인이 작성한 게시글만 수정/삭제할 수 있습니다."
-        )
+        raise PermissionDenied("본인이 작성한 게시글만 수정/삭제할 수 있습니다.")
 
     if request.method == "PATCH":
-        serializer = PostCreateUpdateSerializer(
-            post,
-            data=parse_post_request_data(request),
-            partial=True,
-        )
+        serializer = PostCreateUpdateSerializer(post, data=parse_post_request_data(request), partial=True)
 
-        serializer.is_valid(
-            raise_exception=True
-        )
+        serializer.is_valid(raise_exception=True)
 
         poll_provided = (
             "poll"
@@ -476,10 +388,7 @@ def post_detail(request, post_id):
         )
 
         poll_data = (
-            serializer.validated_data.pop(
-                "poll",
-                None,
-            )
+            serializer.validated_data.pop("poll", None)
         )
 
         keep_image_ids_provided = (
@@ -488,24 +397,16 @@ def post_detail(request, post_id):
         )
 
         keep_image_ids = (
-            serializer.validated_data.pop(
-                "keepImageIds",
-                None,
-            )
+            serializer.validated_data.pop("keepImageIds", None)
         )
 
-        new_images = (
-            request.FILES.getlist("images")
-        )
+        new_images = (request.FILES.getlist("images"))
 
         with transaction.atomic():
             serializer.save()
 
             if poll_provided:
-                apply_poll_update(
-                    post,
-                    poll_data,
-                )
+                apply_poll_update(post, poll_data)
 
             if (
                 keep_image_ids_provided
@@ -532,37 +433,22 @@ def post_detail(request, post_id):
         )
     post.delete()
 
-    return Response(
-        status=status.HTTP_204_NO_CONTENT,
-    )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def post_pin(request, post_id):
     if not request.user.is_staff:
-        raise PermissionDenied(
-            "관리자만 게시글을 상단 고정할 수 있습니다."
-        )
+        raise PermissionDenied("관리자만 게시글을 상단 고정할 수 있습니다.")
 
-    post = get_object_or_404(
-        Post,
-        id=post_id,
-    )
+    post = get_object_or_404(Post, id=post_id)
 
-    serializer = PostPinSerializer(
-        post,
-        data=request.data,
-    )
-    serializer.is_valid(
-        raise_exception=True
-    )
+    serializer = PostPinSerializer(post, data=request.data)
+    serializer.is_valid(raise_exception=True)
     serializer.save()
 
     return success_response(
-        data=PostDetailSerializer(
-            post,
-            context={"request": request},
-        ).data,
+        data=PostDetailSerializer(post, context={"request": request}).data,
         message=(
             "게시글이 상단에 고정되었습니다."
             if post.is_pinned
@@ -573,38 +459,24 @@ def post_pin(request, post_id):
 @api_view(["GET", "POST"])
 @permission_classes([AllowAny])
 def comment_list(request, post_id):
-    post = get_object_or_404(
-        Post,
-        id=post_id,
-    )
+    post = get_object_or_404(Post, id=post_id)
 
     if request.method == "GET":
         comments = (
             post.comments
             .select_related("author", "parent")
-            .annotate(
-                annotated_like_count=Count(
-                    "likes",
-                    distinct=True,
-                ),
-            )
+            .annotate(annotated_like_count=Count("likes", distinct=True))
         )
 
         if request.user.is_authenticated:
             comments = comments.annotate(
                 annotated_is_liked=Exists(
-                    CommentLike.objects.filter(
-                        comment_id=OuterRef("pk"),
-                        user=request.user,
-                    )
+                    CommentLike.objects.filter(comment_id=OuterRef("pk"), user=request.user)
                 )
             )
         else:
             comments = comments.annotate(
-                annotated_is_liked=Value(
-                    False,
-                    output_field=BooleanField(),
-                )
+                annotated_is_liked=Value(False, output_field=BooleanField())
             )
 
         anonymous_sequences = dict(
@@ -623,36 +495,22 @@ def comment_list(request, post_id):
         )
 
         return success_response(
-            data={
-                "comments": serializer.data
-            },
+            data={"comments": serializer.data},
             message="댓글 목록을 조회했습니다.",
         )
 
     if not request.user.is_authenticated:
-        raise PermissionDenied(
-            "로그인이 필요합니다."
-        )
+        raise PermissionDenied("로그인이 필요합니다.")
 
-    serializer = CommentCreateUpdateSerializer(
-        data=request.data
-    )
-    serializer.is_valid(
-        raise_exception=True
-    )
+    serializer = CommentCreateUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
-    parent_id = serializer.validated_data.pop(
-        "parentId",
-        None,
-    )
+    parent_id = serializer.validated_data.pop("parentId", None)
 
     parent = None
 
     if parent_id is not None:
-        parent = get_object_or_404(
-            Comment,
-            id=parent_id,
-        )
+        parent = get_object_or_404(Comment, id=parent_id)
 
         if parent.post_id != post.id:
             raise ValidationError(
@@ -665,39 +523,30 @@ def comment_list(request, post_id):
             )
 
         if parent.parent_id is not None:
-            raise ValidationError(
-                {
-                    "parentId": (
-                        "대댓글에는 답글을 작성할 수 없습니다."
-                    )
-                }
-            )
+            raise ValidationError({"parentId": "대댓글에는 답글을 작성할 수 없습니다."})
 
         if parent.is_deleted:
-            raise ValidationError(
-                {
-                    "parentId": (
-                        "삭제된 댓글에는 답글을 작성할 수 없습니다."
-                    )
-                }
-            )
+            raise ValidationError({"parentId": "삭제된 댓글에는 답글을 작성할 수 없습니다."})
 
     with transaction.atomic():
-        comment = serializer.save(
-            author=request.user,
-            post=post,
-            parent=parent,
-        )
+        comment = serializer.save(author=request.user, post=post, parent=parent)
 
         # 번호는 한 번 발급하면 유지된다. 이미 받은 적 있으면 그 번호를 다시 쓴다.
         if comment.is_anonymous:
             PostAnonymousAlias.issue(post, request.user)
 
+        if (
+            post.allow_notification and post.author_id != request.user.id
+        ):
+            Notification.objects.create(
+                user=post.author,
+                message="내 게시글에 새로운 댓글이 달렸습니다.",
+                type=Notification.Type.COMMENT,
+                target_id=post.id,
+            )
+
     return success_response(
-        data=CommentSerializer(
-            comment,
-            context={"request": request},
-        ).data,
+        data=CommentSerializer(comment, context={"request": request}).data,
         message="댓글이 등록되었습니다.",
         status_code=status.HTTP_201_CREATED,
     )
@@ -724,85 +573,46 @@ def _delete_comment_with_orphaned_parents(comment):
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def comment_detail(request, comment_id):
-    comment = get_object_or_404(
-        Comment,
-        id=comment_id,
-    )
+    comment = get_object_or_404(Comment, id=comment_id)
 
     if comment.author != request.user:
-        raise PermissionDenied(
-            "본인이 작성한 댓글만 수정/삭제할 수 있습니다."
-        )
+        raise PermissionDenied("본인이 작성한 댓글만 수정/삭제할 수 있습니다.")
 
     if request.method == "PATCH":
         if comment.is_deleted:
-            raise ValidationError(
-                {
-                    "detail": (
-                        "삭제된 댓글은 수정할 수 없습니다."
-                    )
-                }
-            )
+            raise ValidationError({"detail": "삭제된 댓글은 수정할 수 없습니다."})
 
-        serializer = CommentCreateUpdateSerializer(
-            comment,
-            data=request.data,
-            partial=True,
-        )
-        serializer.is_valid(
-            raise_exception=True
-        )
+        serializer = CommentCreateUpdateSerializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
 
-        serializer.validated_data.pop(
-            "parentId",
-            None,
-        )
+        serializer.validated_data.pop("parentId", None)
 
         serializer.save()
 
         return success_response(
-            data=CommentSerializer(
-                comment,
-                context={"request": request},
-            ).data,
+            data=CommentSerializer(comment, context={"request": request}).data,
             message="댓글이 수정되었습니다.",
         )
 
     if comment.replies.exists():
         comment.is_deleted = True
-        comment.save(
-            update_fields=[
-                "is_deleted",
-                "updated_at",
-            ]
-        )
+        comment.save(update_fields=["is_deleted", "updated_at"])
 
-        return Response(
-            status=status.HTTP_204_NO_CONTENT,
-        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     with transaction.atomic():
         _delete_comment_with_orphaned_parents(comment)
 
-    return Response(
-        status=status.HTTP_204_NO_CONTENT,
-    )
+    return Response(status=status.HTTP_204_NO_CONTENT,)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def post_report(request, post_id):
-    post = get_object_or_404(
-        Post,
-        id=post_id,
-    )
+    post = get_object_or_404(Post, id=post_id)
 
-    serializer = ReportCreateSerializer(
-        data=request.data
-    )
-    serializer.is_valid(
-        raise_exception=True
-    )
+    serializer = ReportCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
     if Report.objects.filter(reporter=request.user, post=post).exists():
         raise ValidationError({"detail": "이미 신고한 게시글입니다."})
@@ -823,17 +633,10 @@ def post_report(request, post_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def comment_report(request, comment_id):
-    comment = get_object_or_404(
-        Comment,
-        id=comment_id,
-    )
+    comment = get_object_or_404(Comment, id=comment_id)
 
-    serializer = ReportCreateSerializer(
-        data=request.data
-    )
-    serializer.is_valid(
-        raise_exception=True
-    )
+    serializer = ReportCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
     if Report.objects.filter(reporter=request.user, comment=comment).exists():
         raise ValidationError({"detail": "이미 신고한 댓글입니다."})
@@ -854,25 +657,13 @@ def comment_report(request, comment_id):
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def post_like(request, post_id):
-    post = get_object_or_404(
-        Post,
-        id=post_id,
-    )
+    post = get_object_or_404(Post, id=post_id)
 
     if request.method == "POST":
-        like, created = PostLike.objects.get_or_create(
-            user=request.user,
-            post=post,
-        )
+        like, created = PostLike.objects.get_or_create(user=request.user, post=post)
 
         if not created:
-            raise ValidationError(
-                {
-                    "detail": (
-                        "이미 좋아요한 게시글입니다."
-                    )
-                }
-            )
+            raise ValidationError({"detail": "이미 좋아요한 게시글입니다."})
 
         return success_response(
             data={
@@ -884,41 +675,23 @@ def post_like(request, post_id):
             status_code=status.HTTP_201_CREATED,
         )
 
-    like = get_object_or_404(
-        PostLike,
-        user=request.user,
-        post=post,
-    )
+    like = get_object_or_404(PostLike, user=request.user, post=post)
 
     like.delete()
 
-    return Response(
-        status=status.HTTP_204_NO_CONTENT,
-    )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def comment_like(request, comment_id):
-    comment = get_object_or_404(
-        Comment,
-        id=comment_id,
-    )
+    comment = get_object_or_404(Comment, id=comment_id)
 
     if request.method == "POST":
-        like, created = CommentLike.objects.get_or_create(
-            user=request.user,
-            comment=comment,
-        )
+        like, created = CommentLike.objects.get_or_create(user=request.user, comment=comment)
 
         if not created:
-            raise ValidationError(
-                {
-                    "detail": (
-                        "이미 좋아요한 댓글입니다."
-                    )
-                }
-            )
+            raise ValidationError({"detail": "이미 좋아요한 댓글입니다."})
 
         return success_response(
             data={
@@ -938,76 +711,44 @@ def comment_like(request, comment_id):
 
     like.delete()
 
-    return Response(
-        status=status.HTTP_204_NO_CONTENT,
-    )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def post_scrap(request, post_id):
-    post = get_object_or_404(
-        Post,
-        id=post_id,
-    )
+    post = get_object_or_404(Post, id=post_id)
 
     if request.method == "POST":
-        scrap, created = Scrap.objects.get_or_create(
-            user=request.user,
-            post=post,
-        )
+        scrap, created = Scrap.objects.get_or_create(user=request.user, post=post)
 
         if not created:
-            raise ValidationError(
-                {
-                    "detail": (
-                        "이미 스크랩한 게시글입니다."
-                    )
-                }
-            )
+            raise ValidationError({"detail": "이미 스크랩한 게시글입니다."})
 
         return success_response(
-            data=ScrapSerializer(
-                scrap
-            ).data,
+            data=ScrapSerializer(scrap).data,
             message="게시글이 스크랩되었습니다.",
             status_code=status.HTTP_201_CREATED,
         )
 
-    scrap = get_object_or_404(
-        Scrap,
-        user=request.user,
-        post=post,
-    )
+    scrap = get_object_or_404(Scrap, user=request.user, post=post)
 
     scrap.delete()
 
-    return Response(
-        status=status.HTTP_204_NO_CONTENT,
-    )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def scrap_list(request):
-    scraps = Scrap.objects.filter(
-        user=request.user
-    )
+    scraps = Scrap.objects.filter(user=request.user)
 
     paginator = CommonPageNumberPagination()
-    page = paginator.paginate_queryset(
-        scraps,
-        request,
-    )
+    page = paginator.paginate_queryset(scraps, request)
 
-    serializer = ScrapSerializer(
-        page,
-        many=True,
-    )
+    serializer = ScrapSerializer(page, many=True)
 
-    return paginator.get_paginated_response(
-        serializer.data
-    )
+    return paginator.get_paginated_response(serializer.data)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

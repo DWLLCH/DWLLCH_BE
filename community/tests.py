@@ -22,6 +22,7 @@ from .models import (
     PollVote,
 )
 
+from mypage.models import Notification
 User = get_user_model()
 
 
@@ -55,59 +56,24 @@ class CommunityLikeTest(APITestCase):
         refresh = RefreshToken.for_user(self.user)
         access_token = str(refresh.access_token)
 
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {access_token}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
-        self.post_like_url = (
-            f"/community/posts/{self.post.id}/like"
-        )
-        self.comment_like_url = (
-            f"/community/comments/{self.comment.id}/like"
-        )
+        self.post_like_url = (f"/community/posts/{self.post.id}/like")
+        self.comment_like_url = (f"/community/comments/{self.comment.id}/like")
 
     def test_post_like_create_success(self):
-        response = self.client.post(
-            self.post_like_url,
-            format="json",
-        )
+        response = self.client.post(self.post_like_url,format="json")
 
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_201_CREATED,
-        )
-
-        self.assertTrue(
-            PostLike.objects.filter(
-                user=self.user,
-                post=self.post,
-            ).exists()
-        )
-
-        self.assertEqual(
-            response.data["data"]["postId"],
-            self.post.id,
-        )
-
-        self.assertEqual(
-            response.data["data"]["likeCount"],
-            1,
-        )
-
-        self.assertTrue(
-            response.data["data"]["isLiked"]
-        )
+        self.assertEqual(response.status_code,status.HTTP_201_CREATED)
+        self.assertTrue(PostLike.objects.filter(user=self.user,post=self.post).exists())
+        self.assertEqual(response.data["data"]["postId"],self.post.id)
+        self.assertEqual(response.data["data"]["likeCount"],1)
+        self.assertTrue(response.data["data"]["isLiked"])
 
     def test_post_like_duplicate_fail(self):
-        PostLike.objects.create(
-            user=self.user,
-            post=self.post,
-        )
+        PostLike.objects.create(user=self.user,post=self.post)
 
-        response = self.client.post(
-            self.post_like_url,
-            format="json",
-        )
+        response = self.client.post(self.post_like_url, format="json")
 
         self.assertEqual(
             response.status_code,
@@ -343,6 +309,102 @@ class CommunityLikeTest(APITestCase):
             response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+
+
+class CommunityNotificationTest(APITestCase):
+    def setUp(self):
+        self.post_author = User.objects.create_user(
+            email="post-author@example.com",
+            username="postauthor",
+            password="Test1234!",
+        )
+
+        self.comment_author = User.objects.create_user(
+            email="comment-author@example.com",
+            username="commentauthor",
+            password="Test1234!",
+        )
+
+        self.post = Post.objects.create(
+            board_type=Post.BoardType.FREE,
+            author=self.post_author,
+            title="알림 테스트 게시글",
+            content="테스트 내용",
+            allow_notification=True,
+        )
+
+        self.client.force_authenticate(user=self.comment_author)
+
+        self.url = f"/community/posts/{self.post.id}/comments"
+
+    def test_comment_creates_notification_for_post_author(self):
+        response = self.client.post(
+            self.url,
+            {
+                "content": "새로운 댓글입니다.",
+                "isAnonymous": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+        )
+
+        notification = Notification.objects.get(
+            user=self.post_author,
+        )
+
+        self.assertEqual(
+            notification.type,
+            Notification.Type.COMMENT,
+        )
+        self.assertEqual(
+            notification.target_id,
+            self.post.id,
+        )
+        self.assertFalse(notification.is_read)
+
+    def test_own_comment_does_not_create_notification(self):
+        self.client.force_authenticate(user=self.post_author)
+
+        response = self.client.post(
+            self.url,
+            {
+                "content": "내 게시글에 내가 쓴 댓글",
+                "isAnonymous": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+        )
+
+        self.assertFalse(
+            Notification.objects.filter(
+                user=self.post_author,
+            ).exists()
+        )
+
+    def test_comment_does_not_create_notification_when_disabled(self):
+        self.post.allow_notification = False
+        self.post.save(update_fields=["allow_notification"])
+
+        response = self.client.post(
+            self.url,
+            {
+                "content": "알림 비활성화 상태의 댓글",
+                "isAnonymous": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code,status.HTTP_201_CREATED)
+
+        self.assertFalse(Notification.objects.filter(user=self.post_author,).exists())
 
 
 class CommunityReplyTest(APITestCase):
