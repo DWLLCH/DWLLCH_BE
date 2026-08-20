@@ -1,6 +1,6 @@
 import logging
-import mimetypes
 import os
+from pathlib import Path
 
 from django.core import signing
 from django.core.signing import BadSignature, SignatureExpired
@@ -19,8 +19,10 @@ from chat.exceptions import (
     ConsentRequiredException,
     EmptySessionException,
     GeminiServiceUnavailableException,
+    DocumentUnreadableException,
     ImageUnreadableException,
 )
+from chat.uploads import CONTENT_TYPE_BY_SUFFIX
 from chat.models import (
     RiskCheckMessage,
     RiskCheckMessageReport,
@@ -37,6 +39,7 @@ from chat.serializers import (
     SupportConnectionSerializer,
 )
 from chat.services import (
+    AttachmentUnreadableError,
     GeminiRequestError,
     analyze_risk,
     is_ready_for_structure,
@@ -127,6 +130,8 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
                 uploaded_file=uploaded_file,
                 previous_messages=previous_messages,
             )
+        except AttachmentUnreadableError as exc:
+            raise DocumentUnreadableException() from exc
         except GeminiRequestError as exc:
             logger.exception(
                 "Gemini risk analysis failed: session_id=%s",
@@ -134,11 +139,12 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
             )
             raise GeminiServiceUnavailableException() from exc
 
-        if (
-            message_type == RiskCheckMessage.MessageType.IMAGE
-            and not result.image_readable
-        ):
-            raise ImageUnreadableException()
+        if not result.image_readable:
+            if message_type == RiskCheckMessage.MessageType.IMAGE:
+                raise ImageUnreadableException()
+
+            if message_type == RiskCheckMessage.MessageType.DOCUMENT:
+                raise DocumentUnreadableException()
 
         collected_structure_fields = normalize_collected_structure_fields(
             result.collected_structure_fields
@@ -414,10 +420,10 @@ class RiskCheckMessageFileView(APIView):
                     "이미지 조회 권한이 없습니다."
                 )
 
-        content_type, _ = mimetypes.guess_type(message.file.name)
-
-        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-            content_type = "application/octet-stream"
+        content_type = CONTENT_TYPE_BY_SUFFIX.get(
+            Path(message.file.name).suffix.lower(),
+            "application/octet-stream",
+        )
 
         response = FileResponse(
             message.file.open("rb"),

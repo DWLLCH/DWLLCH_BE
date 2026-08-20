@@ -1,9 +1,16 @@
 import json
-import mimetypes
 from typing import Literal
 
 import httpx
 from django.conf import settings
+
+from chat.uploads import (
+    DOCX_CONTENT_TYPE,
+    IMAGE_CONTENT_TYPES,
+    PDF_CONTENT_TYPE,
+    extract_docx_text,
+    resolve_content_type,
+)
 from google import genai
 from google.genai import errors as genai_errors, types
 from pydantic import BaseModel, Field, ValidationError
@@ -55,6 +62,10 @@ class GeminiRequestError(Exception):
     """Gemini API 또는 네트워크 호출 실패."""
 
 
+class AttachmentUnreadableError(Exception):
+    """첨부 파일에서 분석할 내용을 얻지 못함."""
+
+
 RISK_ANALYSIS_PROMPT = """
 당신은 청년의 주거·금융·계약·범죄피해 위험 신호를 판독하는 한국어 지원 챗봇입니다.
 
@@ -65,8 +76,9 @@ RISK_ANALYSIS_PROMPT = """
    "의심 신호가 있습니다", "확인이 필요합니다", "전문가 상담을 권장합니다"
    같은 표현을 사용하세요.
 3. 사용자의 불안을 과도하게 키우지 말고, 짧고 구체적인 행동 지침을 주세요.
-4. 이미지가 흐리거나 핵심 내용을 읽을 수 없다면 image_readable=false로 반환하세요.
-5. 이미지가 읽히지 않으면 추측해서 분석하지 마세요.
+4. 첨부된 이미지나 문서가 흐리거나 핵심 내용을 읽을 수 없다면
+   image_readable=false로 반환하세요.
+5. 첨부가 읽히지 않으면 추측해서 분석하지 마세요.
 6. 위험도 기준:
    - LOW: 일반적인 정보 질문 또는 뚜렷한 위험 신호 없음
    - MEDIUM: 추가 확인이 필요한 불확실한 신호
@@ -164,9 +176,62 @@ def _format_history(messages):
     return "\n".join(formatted)
 
 
+def _format_document_text(document_text):
+    """DOCX 에서 뽑은 본문을 프롬프트에 끼워 넣을 형태로 만든다."""
+    if not document_text:
+        return ""
+
+    return f"""
+첨부 문서에서 추출한 본문:
+{document_text}
+"""
+
+
+def _build_attachment(uploaded_file):
+    """첨부 파일을 (Gemini Part, 추출한 문서 본문) 으로 바꾼다.
+
+    이미지와 PDF 는 바이트 그대로 넘기면 모델이 읽는다.
+    DOCX 는 모델이 읽지 못해 본문 텍스트를 뽑아 프롬프트에 붙인다.
+    """
+    content_type = resolve_content_type(uploaded_file)
+
+    uploaded_file.seek(0)
+    data = uploaded_file.read()
+    uploaded_file.seek(0)
+
+    if content_type in IMAGE_CONTENT_TYPES or content_type == PDF_CONTENT_TYPE:
+        part = types.Part.from_bytes(data=data, mime_type=content_type)
+        return part, ""
+
+    if content_type == DOCX_CONTENT_TYPE:
+        text = extract_docx_text(data)
+
+        # 본문을 못 뽑으면 모델에 넘길 내용이 없다. 호출하기 전에 끊는다.
+        if not text.strip():
+            raise AttachmentUnreadableError
+
+        return None, text
+
+    raise ValueError("지원되지 않는 첨부 파일 형식입니다.")
+
+
 def analyze_risk(content, uploaded_file=None, previous_messages=None):
+    attachment_part = None
+    document_text = ""
+
+    # 첨부를 먼저 처리한다. 넘길 내용이 없으면 클라이언트를 만들기 전에 끊는다.
+    if uploaded_file:
+        attachment_part, document_text = _build_attachment(uploaded_file)
+
     client = _get_client()
     history = _format_history(previous_messages or [])
+
+    if content:
+        user_input = content
+    elif attachment_part is not None or document_text:
+        user_input = "텍스트 설명 없이 첨부 파일만 보냄"
+    else:
+        user_input = "입력 없음"
 
     prompt = f"""
 {RISK_ANALYSIS_PROMPT}
@@ -175,33 +240,15 @@ def analyze_risk(content, uploaded_file=None, previous_messages=None):
 {history or "이전 대화 없음"}
 
 현재 사용자 입력:
-{content or "텍스트 설명 없이 이미지만 첨부됨"}
-
+{user_input}
+{_format_document_text(document_text)}
 현재 사용자 입력과 이전 대화의 맥락을 함께 분석하세요.
 """
 
     contents = [prompt]
 
-    if uploaded_file:
-        mime_type = getattr(uploaded_file, "content_type", None)
-
-        if not mime_type:
-            file_name = getattr(uploaded_file, "name", "")
-            mime_type, _ = mimetypes.guess_type(file_name)
-
-        if not mime_type or not mime_type.startswith("image/"):
-            raise ValueError("지원되지 않는 이미지 형식입니다.")
-
-        uploaded_file.seek(0)
-        image_bytes = uploaded_file.read()
-        uploaded_file.seek(0)
-
-        contents.append(
-            types.Part.from_bytes(
-                data=image_bytes,
-                mime_type=mime_type,
-            )
-        )
+    if attachment_part is not None:
+        contents.append(attachment_part)
 
     try:
         response = client.models.generate_content(
