@@ -172,3 +172,4 @@ class NotificationSerializer(serializers.ModelSerializer):
             "isRead",
             "createdAt",
         ]
+        read_only_fields = ["type"]
