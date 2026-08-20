@@ -13,6 +13,14 @@ class ImageUnreadableException(ChatAPIException):
     default_detail = "이미지를 다시 촬영하거나 텍스트로 입력해주세요"
 
 
+class DocumentUnreadableException(ChatAPIException):
+    status_code = 422
+    api_code = "CHAT_422_DOCUMENT_UNREADABLE"
+    default_detail = (
+        "문서에서 내용을 읽지 못했습니다. 다른 파일로 올리거나 텍스트로 입력해주세요"
+    )
+
+
 class ConsentRequiredException(ChatAPIException):
     status_code = 400
     api_code = "CHAT_400_CONSENT_REQUIRED"
