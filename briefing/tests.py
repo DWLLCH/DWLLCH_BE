@@ -92,6 +92,7 @@ class BriefingCardVisualTest(APITestCase):
                 "title",
                 "cardSummary",
                 "content",
+                "contentTables",
                 "thumbnail",
                 "color",
                 "icon",

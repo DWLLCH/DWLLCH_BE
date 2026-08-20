@@ -17,6 +17,7 @@ class BriefingDetailSerializer(serializers.ModelSerializer):
     thumbnail = serializers.ImageField(use_url=True, allow_null=True)
     cardSummary = serializers.CharField(source="card_summary")
     keySummary = serializers.SerializerMethodField()
+    contentTables = serializers.JSONField(source="content_tables")
 
     class Meta:
         model = Briefing
@@ -26,6 +27,7 @@ class BriefingDetailSerializer(serializers.ModelSerializer):
             "title",
             "cardSummary",
             "content",
+            "contentTables",
             "thumbnail",
             "color",
             "icon",
