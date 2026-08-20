@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 
 
 class Post(models.Model):
@@ -64,6 +64,80 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"{self.author} - {self.content[:20]}"
+
+
+class PostAnonymousAlias(models.Model):
+    """게시글 안에서 한 작성자에게 발급한 익명 번호.
+
+    "익명1", "익명2" 처럼 게시글마다 1 부터 매긴다.
+    번호를 Comment 에 두면 답글 없는 댓글이 완전삭제될 때 함께 사라져,
+    새로고침하면 같은 사람이 다른 번호를 받게 된다.
+    그래서 댓글과 수명을 분리해 따로 보관한다.
+    """
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="anonymous_aliases",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="post_anonymous_aliases",
+    )
+    sequence = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "author"],
+                name="unique_post_anonymous_author",
+            ),
+            models.UniqueConstraint(
+                fields=["post", "sequence"],
+                name="unique_post_anonymous_sequence",
+            ),
+        ]
+
+    def __str__(self):
+        return f"익명{self.sequence}"
+
+    @classmethod
+    def issue(cls, post, author):
+        """(게시글, 작성자) 조합의 번호를 돌려준다. 없으면 새로 발급한다.
+
+        동시에 첫 익명 댓글이 달리면 같은 번호를 계산할 수 있다.
+        (post, sequence) 유니크 제약으로 한쪽만 성공하므로, 실패하면 다시 시도한다.
+        """
+        alias = cls.objects.filter(post=post, author=author).first()
+
+        if alias is not None:
+            return alias.sequence
+
+        for _ in range(5):
+            last = cls.objects.filter(post=post).aggregate(
+                models.Max("sequence")
+            )["sequence__max"]
+
+            try:
+                with transaction.atomic():
+                    alias = cls.objects.create(
+                        post=post,
+                        author=author,
+                        sequence=(last or 0) + 1,
+                    )
+            except IntegrityError:
+                alias = cls.objects.filter(post=post, author=author).first()
+
+                if alias is not None:
+                    return alias.sequence
+
+                continue
+
+            return alias.sequence
+
+        raise IntegrityError("익명 번호를 발급하지 못했습니다.")
 
 
 class Report(models.Model):

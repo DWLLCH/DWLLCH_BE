@@ -23,6 +23,7 @@ from common.responses import success_response
 from common.pagination import CommonPageNumberPagination
 
 from .models import (
+    PostAnonymousAlias,
     Post,
     Comment,
     Report,
@@ -605,10 +606,19 @@ def comment_list(request, post_id):
                 )
             )
 
+        anonymous_sequences = dict(
+            PostAnonymousAlias.objects
+            .filter(post=post)
+            .values_list("author_id", "sequence")
+        )
+
         serializer = CommentSerializer(
             comments,
             many=True,
-            context={"request": request},
+            context={
+                "request": request,
+                "anonymous_sequences": anonymous_sequences,
+            },
         )
 
         return success_response(
@@ -671,11 +681,16 @@ def comment_list(request, post_id):
                 }
             )
 
-    comment = serializer.save(
-        author=request.user,
-        post=post,
-        parent=parent,
-    )
+    with transaction.atomic():
+        comment = serializer.save(
+            author=request.user,
+            post=post,
+            parent=parent,
+        )
+
+        # 번호는 한 번 발급하면 유지된다. 이미 받은 적 있으면 그 번호를 다시 쓴다.
+        if comment.is_anonymous:
+            PostAnonymousAlias.issue(post, request.user)
 
     return success_response(
         data=CommentSerializer(
