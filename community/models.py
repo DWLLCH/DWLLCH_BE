@@ -160,6 +160,23 @@ class Report(models.Model):
     reason = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            # 한 사람이 같은 대상을 여러 번 신고하면 누적 건수를 기준으로
+            # 노출을 판단할 수 없다. 대상별로 1회만 접수한다.
+            models.UniqueConstraint(
+                fields=["reporter", "post"],
+                condition=models.Q(post__isnull=False),
+                name="unique_post_report_per_reporter",
+            ),
+            models.UniqueConstraint(
+                fields=["reporter", "comment"],
+                condition=models.Q(comment__isnull=False),
+                name="unique_comment_report_per_reporter",
+            ),
+        ]
+
     def __str__(self):
         return f"{self.reporter} reported {self.target_type}"
 

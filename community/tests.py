@@ -13,6 +13,7 @@ from .models import (
     Post,
     Comment,
     PostAnonymousAlias,
+    Report,
     PostLike,
     CommentLike,
     PostImage,
@@ -1877,3 +1878,133 @@ class PostListAuthorIdTest(APITestCase):
         detail = self.client.get(f"/community/posts/{self.post.id}").data["data"]
 
         self.assertEqual(rows[self.post.id]["authorId"], detail["authorId"])
+
+
+class CommunityReportTest(APITestCase):
+    """게시글/댓글 신고 접수."""
+
+    def setUp(self):
+        self.reporter = User.objects.create_user(
+            email="reporter@example.com",
+            username="reporter",
+            password="Test1234!",
+        )
+        self.other_reporter = User.objects.create_user(
+            email="reporter2@example.com",
+            username="reporter2",
+            password="Test1234!",
+        )
+        self.author = User.objects.create_user(
+            email="reported@example.com",
+            username="reported",
+            password="Test1234!",
+        )
+
+        self.post = Post.objects.create(
+            author=self.author,
+            board_type=Post.BoardType.FREE,
+            title="신고 대상 게시글",
+            content="본문",
+        )
+        self.comment = Comment.objects.create(
+            post=self.post,
+            author=self.author,
+            content="신고 대상 댓글",
+        )
+
+        self.client.force_authenticate(user=self.reporter)
+
+    def report_post(self, reason="욕설/비방", user=None):
+        self.client.force_authenticate(user=user or self.reporter)
+
+        return self.client.post(
+            f"/community/posts/{self.post.id}/report",
+            {"reason": reason},
+            format="json",
+        )
+
+    def report_comment(self, reason="욕설/비방"):
+        return self.client.post(
+            f"/community/comments/{self.comment.id}/report",
+            {"reason": reason},
+            format="json",
+        )
+
+    def test_report_post(self):
+        response = self.report_post()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        data = response.data["data"]
+
+        self.assertEqual(data["targetType"], Report.TargetType.POST)
+        self.assertEqual(data["postId"], self.post.id)
+        self.assertIsNone(data["commentId"])
+        self.assertEqual(data["reason"], "욕설/비방")
+
+    def test_report_comment(self):
+        response = self.report_comment()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        data = response.data["data"]
+
+        self.assertEqual(data["targetType"], Report.TargetType.COMMENT)
+        self.assertEqual(data["commentId"], self.comment.id)
+
+    def test_cannot_report_the_same_post_twice(self):
+        self.report_post()
+
+        response = self.report_post(reason="스팸/광고")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Report.objects.filter(post=self.post).count(), 1)
+
+    def test_cannot_report_the_same_comment_twice(self):
+        self.report_comment()
+
+        response = self.report_comment(reason="스팸/광고")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Report.objects.filter(comment=self.comment).count(), 1)
+
+    def test_different_reporters_can_report_the_same_post(self):
+        """누적 집계가 가능하려면 다른 사람의 신고는 쌓여야 한다."""
+        self.report_post()
+        self.report_post(user=self.other_reporter)
+
+        self.assertEqual(Report.objects.filter(post=self.post).count(), 2)
+
+    def test_reporting_a_post_does_not_block_reporting_its_comment(self):
+        self.report_post()
+
+        self.assertEqual(
+            self.report_comment().status_code,
+            status.HTTP_201_CREATED,
+        )
+
+    def test_blank_reason_is_rejected(self):
+        response = self.report_post(reason="   ")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Report.objects.exists())
+
+    def test_report_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.post(
+            f"/community/posts/{self.post.id}/report",
+            {"reason": "욕설/비방"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_report_unknown_post_returns_404(self):
+        response = self.client.post(
+            "/community/posts/999999/report",
+            {"reason": "욕설/비방"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

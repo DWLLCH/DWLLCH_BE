@@ -42,6 +42,7 @@ from .serializers import (
     CommentCreateUpdateSerializer,
     MyCommentSerializer,
     ReportCreateSerializer,
+    ReportSerializer,
     ScrapSerializer,
     PollSerializer,
 )
@@ -803,14 +804,17 @@ def post_report(request, post_id):
         raise_exception=True
     )
 
-    serializer.save(
+    if Report.objects.filter(reporter=request.user, post=post).exists():
+        raise ValidationError({"detail": "이미 신고한 게시글입니다."})
+
+    report = serializer.save(
         reporter=request.user,
         target_type=Report.TargetType.POST,
         post=post,
     )
 
     return success_response(
-        data=serializer.data,
+        data=ReportSerializer(report).data,
         message="게시글이 신고되었습니다.",
         status_code=status.HTTP_201_CREATED,
     )
@@ -831,14 +835,17 @@ def comment_report(request, comment_id):
         raise_exception=True
     )
 
-    serializer.save(
+    if Report.objects.filter(reporter=request.user, comment=comment).exists():
+        raise ValidationError({"detail": "이미 신고한 댓글입니다."})
+
+    report = serializer.save(
         reporter=request.user,
         target_type=Report.TargetType.COMMENT,
         comment=comment,
     )
 
     return success_response(
-        data=serializer.data,
+        data=ReportSerializer(report).data,
         message="댓글이 신고되었습니다.",
         status_code=status.HTTP_201_CREATED,
     )
