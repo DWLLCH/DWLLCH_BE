@@ -535,14 +535,23 @@ def comment_list(request, post_id):
         if comment.is_anonymous:
             PostAnonymousAlias.issue(post, request.user)
 
-        if (
-            post.allow_notification and post.author_id != request.user.id
-        ):
+        notification_user = post.author if parent is None else parent.author
+
+        if post.allow_notification and notification_user.id != request.user.id:
             Notification.objects.create(
-                user=post.author,
-                message="내 게시글에 새로운 댓글이 달렸습니다.",
-                type=Notification.Type.COMMENT,
+                user=notification_user,
+                message=(
+                    "내 게시글에 새로운 댓글이 달렸습니다."
+                    if parent is None
+                    else "내 댓글에 새로운 답글이 달렸습니다."
+                ),
+                type=(
+                    Notification.Type.COMMENT
+                    if parent is None
+                    else Notification.Type.REPLY
+                ),
                 target_id=post.id,
+                comment_id=comment.id,
             )
 
     return success_response(

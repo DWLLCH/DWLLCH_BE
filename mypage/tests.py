@@ -195,6 +195,7 @@ class NotificationTest(APITestCase):
             message="신청 마감이 3일 남았습니다.",
             type=Notification.Type.DEADLINE,
             target_id=10,
+            comment_id=100,
         )
 
         self.other_notification = Notification.objects.create(
@@ -214,6 +215,7 @@ class NotificationTest(APITestCase):
         self.assertEqual(len(content), 1)
         self.assertEqual(content[0]["type"], Notification.Type.DEADLINE)
         self.assertEqual(content[0]["targetId"], 10)
+        self.assertEqual(content[0]["commentId"], 100)
         self.assertFalse(content[0]["isRead"])
 
     def test_notification_read_success(self):
@@ -227,6 +229,8 @@ class NotificationTest(APITestCase):
 
         self.notification.refresh_from_db()
         self.assertTrue(self.notification.is_read)
+        self.assertEqual(response.data["data"]["targetId"], 10)
+        self.assertEqual(response.data["data"]["commentId"], 100)
         self.assertTrue(response.data["data"]["isRead"])
 
     def test_cannot_read_other_users_notification(self):

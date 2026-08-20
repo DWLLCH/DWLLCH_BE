@@ -174,6 +174,7 @@ class ChecklistItemSerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     targetId = serializers.IntegerField(source="target_id", allow_null=True, read_only=True)
+    commentId = serializers.IntegerField(source="comment_id", allow_null=True, read_only=True)
     isRead = serializers.BooleanField(source="is_read", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
 
@@ -184,6 +185,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "message",
             "type",
             "targetId",
+            "commentId",
             "isRead",
             "createdAt",
         ]
