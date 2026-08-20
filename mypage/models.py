@@ -36,12 +36,20 @@ class Application(models.Model):
 
 
 class Notification(models.Model):
+    class Type(models.TextChoices):
+            DEADLINE = "DEADLINE", "신청 마감"
+            COMMENT = "COMMENT", "댓글"
+            REPLY = "REPLY", "답글"
+            ETC = "ETC", "기타"
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="notifications",
     )
     message = models.CharField(max_length=200)
+    type = models.CharField(max_length=20, choices=Type.choices, default=Type.ETC)
+    target_id = models.PositiveBigIntegerField(blank=True, null=True, help_text="알림 클릭 시 이동할 대상 객체 ID")
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -49,7 +57,7 @@ class Notification(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.user.email} - {self.message}"
+        return f"{self.user.email} - {self.type} - {self.message}"
 
 class ChecklistItem(models.Model):
     application = models.ForeignKey(

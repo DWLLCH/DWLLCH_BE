@@ -173,3 +173,26 @@ def notification_list(request):
     page = paginator.paginate_queryset(notifications, request)
     serializer = NotificationSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def notification_read(request, notification_id):
+    notification = get_object_or_404(Notification, id=notification_id, user=request.user)
+
+    if not notification.is_read:
+        notification.is_read = True
+        notification.save(update_fields=["is_read"])
+
+    return success_response(data=NotificationSerializer(notification).data, message="알림을 읽음 처리했습니다.")
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def notification_read_all(request):
+    updated_count = Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+
+    return success_response(
+        data={"updatedCount": updated_count},
+        message="모든 알림을 읽음 처리했습니다.",
+    )
