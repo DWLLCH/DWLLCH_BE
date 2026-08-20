@@ -50,6 +50,7 @@ class Notification(models.Model):
     message = models.CharField(max_length=200)
     type = models.CharField(max_length=20, choices=Type.choices, default=Type.ETC)
     target_id = models.PositiveBigIntegerField(blank=True, null=True, help_text="알림 클릭 시 이동할 대상 객체 ID")
+    comment_id = models.PositiveBigIntegerField(blank=True, null=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

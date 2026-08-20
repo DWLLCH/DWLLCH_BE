@@ -364,7 +364,62 @@ class CommunityNotificationTest(APITestCase):
             notification.target_id,
             self.post.id,
         )
+        self.assertEqual(
+            notification.comment_id,
+            response.data["data"]["id"],
+        )
         self.assertFalse(notification.is_read)
+
+    def test_reply_creates_reply_notification_for_parent_comment_author(self):
+        parent_author = User.objects.create_user(
+            email="parent-author@example.com",
+            username="parentauthor",
+            password="Test1234!",
+        )
+        parent = Comment.objects.create(
+            post=self.post,
+            author=parent_author,
+            content="parent comment",
+        )
+
+        response = self.client.post(
+            self.url,
+            {
+                "content": "reply",
+                "isAnonymous": False,
+                "parentId": parent.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        notification = Notification.objects.get(user=parent_author)
+        self.assertEqual(notification.type, Notification.Type.REPLY)
+        self.assertEqual(notification.target_id, self.post.id)
+        self.assertEqual(notification.comment_id, response.data["data"]["id"])
+        self.assertFalse(
+            Notification.objects.filter(user=self.post_author).exists()
+        )
+
+    def test_own_reply_does_not_create_notification(self):
+        parent = Comment.objects.create(
+            post=self.post,
+            author=self.comment_author,
+            content="own parent comment",
+        )
+
+        response = self.client.post(
+            self.url,
+            {
+                "content": "own reply",
+                "isAnonymous": False,
+                "parentId": parent.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(Notification.objects.exists())
 
     def test_own_comment_does_not_create_notification(self):
         self.client.force_authenticate(user=self.post_author)
