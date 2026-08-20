@@ -145,6 +145,15 @@ class Report(models.Model):
         POST = "POST", "게시글"
         COMMENT = "COMMENT", "댓글"
 
+    class Reason(models.TextChoices):
+        """신고 사유. 라벨은 프론트 신고 바텀시트 문구와 같다."""
+
+        SPAM = "SPAM", "스팸, 광고"
+        SEXUAL = "SEXUAL", "음란성, 선정성 글"
+        HATE = "HATE", "혐오, 반응 조장 발언"
+        PRIVACY = "PRIVACY", "개인정보 노출"
+        MISINFORMATION = "MISINFORMATION", "의도적인 거짓 정보 확산"
+
     reporter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -157,7 +166,9 @@ class Report(models.Model):
     comment = models.ForeignKey(
         Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="reports"
     )
-    reason = models.CharField(max_length=200)
+    # 사유별 집계를 위해 고정 코드만 받는다.
+    # max_length 는 자유 문자열이던 시절 값 그대로 두어 기존 데이터를 건드리지 않는다.
+    reason = models.CharField(max_length=200, choices=Reason.choices)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

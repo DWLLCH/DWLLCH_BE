@@ -1914,7 +1914,7 @@ class CommunityReportTest(APITestCase):
 
         self.client.force_authenticate(user=self.reporter)
 
-    def report_post(self, reason="욕설/비방", user=None):
+    def report_post(self, reason=Report.Reason.SPAM, user=None):
         self.client.force_authenticate(user=user or self.reporter)
 
         return self.client.post(
@@ -1923,7 +1923,7 @@ class CommunityReportTest(APITestCase):
             format="json",
         )
 
-    def report_comment(self, reason="욕설/비방"):
+    def report_comment(self, reason=Report.Reason.SPAM):
         return self.client.post(
             f"/community/comments/{self.comment.id}/report",
             {"reason": reason},
@@ -1940,7 +1940,7 @@ class CommunityReportTest(APITestCase):
         self.assertEqual(data["targetType"], Report.TargetType.POST)
         self.assertEqual(data["postId"], self.post.id)
         self.assertIsNone(data["commentId"])
-        self.assertEqual(data["reason"], "욕설/비방")
+        self.assertEqual(data["reason"], Report.Reason.SPAM)
 
     def test_report_comment(self):
         response = self.report_comment()
@@ -1955,7 +1955,7 @@ class CommunityReportTest(APITestCase):
     def test_cannot_report_the_same_post_twice(self):
         self.report_post()
 
-        response = self.report_post(reason="스팸/광고")
+        response = self.report_post(reason=Report.Reason.HATE)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Report.objects.filter(post=self.post).count(), 1)
@@ -1963,7 +1963,7 @@ class CommunityReportTest(APITestCase):
     def test_cannot_report_the_same_comment_twice(self):
         self.report_comment()
 
-        response = self.report_comment(reason="스팸/광고")
+        response = self.report_comment(reason=Report.Reason.HATE)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Report.objects.filter(comment=self.comment).count(), 1)
@@ -1983,18 +1983,45 @@ class CommunityReportTest(APITestCase):
             status.HTTP_201_CREATED,
         )
 
-    def test_blank_reason_is_rejected(self):
-        response = self.report_post(reason="   ")
+    def test_unknown_reason_is_rejected(self):
+        """바텀시트에 없는 사유는 받지 않는다. 사유별 집계가 어긋난다."""
+        response = self.report_post(reason="욕설/비방")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Report.objects.exists())
+
+    def test_blank_reason_is_rejected(self):
+        response = self.report_post(reason="")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Report.objects.exists())
+
+    def test_every_bottom_sheet_reason_is_accepted(self):
+        for index, reason in enumerate(Report.Reason.values):
+            post = Post.objects.create(
+                author=self.author,
+                board_type=Post.BoardType.FREE,
+                title=f"신고 대상 {index}",
+                content="본문",
+            )
+            response = self.client.post(
+                f"/community/posts/{post.id}/report",
+                {"reason": reason},
+                format="json",
+            )
+
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_201_CREATED,
+                msg=reason,
+            )
 
     def test_report_requires_authentication(self):
         self.client.force_authenticate(user=None)
 
         response = self.client.post(
             f"/community/posts/{self.post.id}/report",
-            {"reason": "욕설/비방"},
+            {"reason": Report.Reason.SPAM},
             format="json",
         )
 
@@ -2003,7 +2030,7 @@ class CommunityReportTest(APITestCase):
     def test_report_unknown_post_returns_404(self):
         response = self.client.post(
             "/community/posts/999999/report",
-            {"reason": "욕설/비방"},
+            {"reason": Report.Reason.SPAM},
             format="json",
         )
 
