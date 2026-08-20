@@ -687,6 +687,24 @@ def comment_list(request, post_id):
     )
 
 
+def _delete_comment_with_orphaned_parents(comment):
+    """댓글을 지우고, 소프트삭제 상태로만 남아 있던 조상 댓글도 함께 정리한다.
+
+    답글이 달린 댓글은 "삭제된 댓글입니다" 자리를 지키려고 소프트삭제로 남긴다.
+    그 자리를 지킬 답글이 전부 사라지면 남겨둘 이유가 없으므로 같이 지운다.
+    """
+    parent = comment.parent
+    comment.delete()
+
+    while parent is not None:
+        if not parent.is_deleted or parent.replies.exists():
+            break
+
+        grandparent = parent.parent
+        parent.delete()
+        parent = grandparent
+
+
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def comment_detail(request, comment_id):
@@ -747,7 +765,8 @@ def comment_detail(request, comment_id):
             status=status.HTTP_204_NO_CONTENT,
         )
 
-    comment.delete()
+    with transaction.atomic():
+        _delete_comment_with_orphaned_parents(comment)
 
     return Response(
         status=status.HTTP_204_NO_CONTENT,
