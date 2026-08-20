@@ -192,8 +192,8 @@ class NotificationTest(APITestCase):
 
         self.notification = Notification.objects.create(
             user=self.user,
-            message="신청 마감이 3일 남았습니다.",
-            type=Notification.Type.DEADLINE,
+            message="내 게시글에 새로운 댓글이 달렸습니다.",
+            type=Notification.Type.COMMENT,
             target_id=10,
             comment_id=100,
         )
@@ -213,7 +213,7 @@ class NotificationTest(APITestCase):
         content = response.data["content"]
 
         self.assertEqual(len(content), 1)
-        self.assertEqual(content[0]["type"], Notification.Type.DEADLINE)
+        self.assertEqual(content[0]["type"], Notification.Type.COMMENT)
         self.assertEqual(content[0]["targetId"], 10)
         self.assertEqual(content[0]["commentId"], 100)
         self.assertFalse(content[0]["isRead"])
