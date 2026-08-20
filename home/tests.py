@@ -208,6 +208,19 @@ class PolicyListMatchTest(APITestCase):
             application_end=date.today() + timedelta(days=3),
         )
 
+        always_open_policy = Policy.objects.create(
+            title="마감 없는 상시모집 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            application_end=None,
+        )
+
         # 시드 데이터에 밀려 첫 페이지에서 빠지지 않도록 이 테스트가 만든 정책만 조회한다.
         response = self.client.get(
             "/policies",
@@ -224,10 +237,16 @@ class PolicyListMatchTest(APITestCase):
             if policy["id"] in [
                 later_policy.id,
                 sooner_policy.id,
+                always_open_policy.id,
             ]
         ]
 
-        self.assertEqual(ids, [sooner_policy.id, later_policy.id])
+        # 마감이 임박한 순서로 보여주는 정렬이므로 상시모집은 맨 뒤여야 한다.
+        # NULL 을 앞에 두는 DB(SQLite)에서도 같은 순서가 나와야 한다.
+        self.assertEqual(
+            ids,
+            [sooner_policy.id, later_policy.id, always_open_policy.id],
+        )
 
 
     def test_policy_list_default_sort_is_updated_at(self):
