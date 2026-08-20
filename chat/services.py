@@ -14,6 +14,17 @@ class ExternalAppLink(BaseModel):
     url: str
 
 
+# SOS 구조화 카드를 채우는 6개 항목. StructuredReportResult 의 필드명과 같다.
+STRUCTURE_FIELD_NAMES = (
+    "date",
+    "amount",
+    "location",
+    "counterpart",
+    "situation_summary",
+    "risk_type",
+)
+
+
 class RiskAnalysisResult(BaseModel):
     risk_level: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     summary: str
@@ -24,6 +35,9 @@ class RiskAnalysisResult(BaseModel):
     reply: str
     suggested_replies: list[str] = Field(default_factory=list)
     image_readable: bool = True
+    # 스키마를 Literal 로 좁히면 모델이 예상 밖 값을 돌려줄 때 파싱이 통째로 실패한다.
+    # 느슨하게 받고 normalize_collected_structure_fields 로 걸러낸다.
+    collected_structure_fields: list[str] = Field(default_factory=list)
 
 
 class StructuredReportResult(BaseModel):
@@ -64,6 +78,12 @@ RISK_ANALYSIS_PROMPT = """
 10. 사용자가 제공하지 않은 날짜, 금액, 장소, 상대방 정보를 만들어내지 마세요.
 11. flagged_clauses에는 계약서나 대화에서 발견된 의심 문구만 넣으세요.
 12. external_app_link는 실제로 도움이 되는 경우에만 반환하세요.
+13. collected_structure_fields에는 지금까지의 대화에서 사실로 확인된
+    SOS 구조화 항목의 영문 이름만 넣으세요.
+    항목은 date(날짜), amount(금액), location(장소), counterpart(상대방),
+    situation_summary(상황 요약), risk_type(위험 유형)입니다.
+14. 사용자가 말하지 않았거나 추측해야 하는 항목은
+    collected_structure_fields에 넣지 마세요.
 """
 
 
@@ -87,6 +107,29 @@ STRUCTURE_PROMPT = """
 6. CRITICAL은 즉각적인 신체 위험, 자해·타해 또는 현재 진행 중인 심각한
    범죄피해 위험에만 사용하세요.
 """
+
+
+def normalize_collected_structure_fields(values):
+    """모델이 돌려준 항목명을 알려진 6개 항목으로만 추린다.
+
+    대소문자나 공백이 섞여 오거나 없는 항목명이 올 수 있어 그대로 믿지 않는다.
+    중복은 제거하고 STRUCTURE_FIELD_NAMES 순서를 따른다.
+    """
+    if not isinstance(values, list):
+        return []
+
+    collected = set()
+
+    for value in values:
+        if isinstance(value, str):
+            collected.add(value.strip().lower())
+
+    return [name for name in STRUCTURE_FIELD_NAMES if name in collected]
+
+
+def is_ready_for_structure(collected_fields):
+    """6개 항목이 모두 확인됐는지 여부. 구조화 카드 자동 표시 기준이다."""
+    return set(collected_fields) == set(STRUCTURE_FIELD_NAMES)
 
 
 def _get_client():

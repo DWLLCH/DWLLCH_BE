@@ -36,7 +36,13 @@ from chat.serializers import (
     RiskCheckSessionSerializer,
     SupportConnectionSerializer,
 )
-from chat.services import GeminiRequestError, analyze_risk, structure_session
+from chat.services import (
+    GeminiRequestError,
+    analyze_risk,
+    is_ready_for_structure,
+    normalize_collected_structure_fields,
+    structure_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,10 +140,18 @@ class RiskCheckMessageView(APIView):    # 메시지 목록 조회
         ):
             raise ImageUnreadableException()
 
+        collected_structure_fields = normalize_collected_structure_fields(
+            result.collected_structure_fields
+        )
+
         analysis = {
             "summary": result.summary,
             "flaggedClauses": result.flagged_clauses,
             "missingVerifications": result.missing_verifications,
+            # 구조화 6개 항목이 다 모였는지. 프론트의 SOS 카드 자동 표시 기준이다.
+            # 메시지에 함께 저장돼, 대화를 다시 불러와도 같은 판단을 쓸 수 있다.
+            "readyForStructure": is_ready_for_structure(collected_structure_fields),
+            "collectedStructureFields": collected_structure_fields,
         }
 
         external_app_link = (

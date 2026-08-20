@@ -17,10 +17,13 @@ from chat.models import (
     SupportConnection,
 )
 from chat.services import (
+    STRUCTURE_FIELD_NAMES,
     ExternalAppLink,
     GeminiRequestError,
     RiskAnalysisResult,
     StructuredReportResult,
+    is_ready_for_structure,
+    normalize_collected_structure_fields,
 )
 from users.models import User
 
@@ -567,3 +570,100 @@ class RiskCheckAPITestCase(APITestCase):
         self.assertIn("notice", response.data["data"])
         connection = SupportConnection.objects.get(session=session)
         self.assertTrue(connection.forced_connection)
+
+
+class ReadyForStructureTests(APITestCase):
+    """구조화 카드 자동 표시 기준(readyForStructure) 검증."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="ready@example.com",
+            username="ready",
+            password="password123!",
+            birth_date=date(2000, 1, 1),
+        )
+        self.client.force_authenticate(self.user)
+        self.session = RiskCheckSession.objects.create(user=self.user)
+
+    def analysis_result(self, collected):
+        return RiskAnalysisResult(
+            risk_level="HIGH",
+            summary="요약",
+            reply="답변",
+            collected_structure_fields=collected,
+        )
+
+    def send_message(self, collected):
+        with patch("chat.views.analyze_risk") as analyze_risk:
+            analyze_risk.return_value = self.analysis_result(collected)
+
+            return self.client.post(
+                f"/chat/risk-check/sessions/{self.session.id}/messages",
+                {"type": "TEXT", "content": "상황을 설명합니다."},
+                format="json",
+            )
+
+    def test_all_six_fields_collected_marks_ready(self):
+        response = self.send_message(list(STRUCTURE_FIELD_NAMES))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        analysis = response.data["data"]["analysisResult"]
+        self.assertTrue(analysis["readyForStructure"])
+        self.assertEqual(
+            analysis["collectedStructureFields"],
+            list(STRUCTURE_FIELD_NAMES),
+        )
+
+    def test_missing_one_field_is_not_ready(self):
+        response = self.send_message(list(STRUCTURE_FIELD_NAMES[:-1]))
+
+        analysis = response.data["data"]["analysisResult"]
+        self.assertFalse(analysis["readyForStructure"])
+        self.assertNotIn("risk_type", analysis["collectedStructureFields"])
+
+    def test_no_collected_fields_is_not_ready(self):
+        response = self.send_message([])
+
+        analysis = response.data["data"]["analysisResult"]
+        self.assertFalse(analysis["readyForStructure"])
+        self.assertEqual(analysis["collectedStructureFields"], [])
+
+    def test_result_is_saved_on_the_message(self):
+        """대화를 다시 불러와도 같은 판단을 쓸 수 있어야 한다."""
+        self.send_message(list(STRUCTURE_FIELD_NAMES))
+
+        message = RiskCheckMessage.objects.filter(
+            session=self.session,
+            sender=RiskCheckMessage.Sender.USER,
+        ).latest("id")
+        self.assertTrue(message.analysis_result["readyForStructure"])
+
+    def test_unknown_or_duplicated_field_names_are_ignored(self):
+        response = self.send_message(
+            ["DATE", " amount ", "amount", "존재하지_않는_항목"]
+        )
+
+        analysis = response.data["data"]["analysisResult"]
+        self.assertEqual(
+            analysis["collectedStructureFields"],
+            ["date", "amount"],
+        )
+        self.assertFalse(analysis["readyForStructure"])
+
+    def test_normalize_helper_tolerates_unexpected_payloads(self):
+        """스키마를 벗어난 응답이 와도 예외 없이 걸러져야 한다."""
+        self.assertEqual(normalize_collected_structure_fields(None), [])
+        self.assertEqual(normalize_collected_structure_fields("date"), [])
+        self.assertEqual(
+            normalize_collected_structure_fields([None, 3, "date"]),
+            ["date"],
+        )
+
+    def test_normalize_helper_keeps_declared_order(self):
+        collected = normalize_collected_structure_fields(
+            ["risk_type", "amount", "date"]
+        )
+
+        self.assertEqual(collected, ["date", "amount", "risk_type"])
+        self.assertFalse(is_ready_for_structure(collected))
+        self.assertTrue(is_ready_for_structure(list(STRUCTURE_FIELD_NAMES)))
