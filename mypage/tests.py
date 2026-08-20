@@ -1,9 +1,10 @@
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from PIL import Image
@@ -278,6 +279,148 @@ class ProfileImageTest(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ScheduledNotificationCommandTest(APITestCase):
+    def setUp(self):
+        self.today = date(2026, 8, 21)
+        self.user = User.objects.create_user(
+            email="scheduled-notification@example.com",
+            username="schedulednotification",
+            password="Test1234!",
+        )
+
+    def create_policy(self, title, application_end):
+        return Policy.objects.create(
+            title=title,
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.ETC,
+            target_condition="알림 테스트",
+            organization="기관",
+            application_end=application_end,
+        )
+
+    def run_command(self):
+        call_command(
+            "create_scheduled_notifications",
+            run_date=self.today.isoformat(),
+        )
+
+    def test_creates_deadline_notifications_at_d7_and_d1(self):
+        policies = [
+            self.create_policy("D-7 정책", self.today + timedelta(days=7)),
+            self.create_policy("D-1 정책", self.today + timedelta(days=1)),
+        ]
+
+        for policy in policies:
+            Application.objects.create(
+                user=self.user,
+                policy=policy,
+                status=Application.Status.PLANNED,
+            )
+
+        self.run_command()
+
+        notifications = Notification.objects.filter(
+            user=self.user,
+            type=Notification.Type.DEADLINE,
+        )
+        self.assertEqual(notifications.count(), 2)
+        self.assertSetEqual(
+            set(notifications.values_list("target_id", flat=True)),
+            {policy.id for policy in policies},
+        )
+
+    def test_skips_past_other_dates_and_completed_applications(self):
+        application_data = [
+            (self.today - timedelta(days=1), Application.Status.PLANNED),
+            (self.today + timedelta(days=2), Application.Status.PLANNED),
+            (self.today + timedelta(days=7), Application.Status.COMPLETED),
+        ]
+
+        for index, (application_end, application_status) in enumerate(
+            application_data
+        ):
+            policy = self.create_policy(
+                f"제외 정책 {index}",
+                application_end,
+            )
+            Application.objects.create(
+                user=self.user,
+                policy=policy,
+                status=application_status,
+            )
+
+        self.run_command()
+
+        self.assertFalse(
+            Notification.objects.filter(
+                type=Notification.Type.DEADLINE,
+            ).exists()
+        )
+
+    def test_creates_protection_end_notifications_at_each_offset(self):
+        for days_left in (30, 7, 1, 0):
+            User.objects.create_user(
+                email=f"protection-{days_left}@example.com",
+                username=f"protection{days_left}",
+                password="Test1234!",
+                protection_status=User.ProtectionStatus.SCHEDULED,
+                protection_end_date=self.today + timedelta(days=days_left),
+            )
+
+        User.objects.create_user(
+            email="protection-other-date@example.com",
+            username="protectionotherdate",
+            password="Test1234!",
+            protection_status=User.ProtectionStatus.SCHEDULED,
+            protection_end_date=self.today + timedelta(days=2),
+        )
+        User.objects.create_user(
+            email="protection-ended@example.com",
+            username="protectionended",
+            password="Test1234!",
+            protection_status=User.ProtectionStatus.ENDED,
+            protection_end_date=self.today + timedelta(days=7),
+        )
+
+        self.run_command()
+
+        notifications = Notification.objects.filter(
+            type=Notification.Type.PROTECTION_END,
+        )
+        self.assertEqual(notifications.count(), 4)
+        self.assertTrue(
+            all(notification.target_id is None for notification in notifications)
+        )
+
+    def test_command_does_not_create_duplicate_notifications(self):
+        policy = self.create_policy(
+            "중복 방지 정책",
+            self.today + timedelta(days=7),
+        )
+        Application.objects.create(
+            user=self.user,
+            policy=policy,
+            status=Application.Status.IN_PROGRESS,
+        )
+        User.objects.create_user(
+            email="protection-duplicate@example.com",
+            username="protectionduplicate",
+            password="Test1234!",
+            protection_status=User.ProtectionStatus.SCHEDULED,
+            protection_end_date=self.today,
+        )
+
+        self.run_command()
+        self.run_command()
+
+        self.assertEqual(Notification.objects.count(), 2)
+
 
 class NotificationTest(APITestCase):
     def setUp(self):

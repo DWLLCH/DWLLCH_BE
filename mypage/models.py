@@ -40,6 +40,7 @@ class Notification(models.Model):
             DEADLINE = "DEADLINE", "신청 마감"
             COMMENT = "COMMENT", "댓글"
             REPLY = "REPLY", "답글"
+            PROTECTION_END = "PROTECTION_END", "보호종료"
             ETC = "ETC", "기타"
 
     user = models.ForeignKey(
@@ -51,6 +52,7 @@ class Notification(models.Model):
     type = models.CharField(max_length=20, choices=Type.choices, default=Type.ETC)
     target_id = models.PositiveBigIntegerField(blank=True, null=True, help_text="알림 클릭 시 이동할 대상 객체 ID")
     comment_id = models.PositiveBigIntegerField(blank=True, null=True)
+    event_key = models.CharField(max_length=100, unique=True, null=True, blank=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
