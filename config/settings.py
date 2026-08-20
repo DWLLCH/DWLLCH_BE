@@ -250,6 +250,7 @@ if IS_PRODUCTION:
                 "bucket_name": AWS_STORAGE_BUCKET_NAME,
                 "region_name": AWS_S3_REGION_NAME,
                 "location": "media",
+                "custom_domain": AWS_S3_CUSTOM_DOMAIN,
                 "default_acl": None,
                 "querystring_auth": False,
                 "file_overwrite": False,
