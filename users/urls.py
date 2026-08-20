@@ -10,6 +10,8 @@ from .views import (
     PasswordChangeView,
     AccountDeleteView,
     EmailChangeView,
+    UserBlockView,
+    UserBlockDetailView,
 )
 
 urlpatterns = [
@@ -22,4 +24,10 @@ urlpatterns = [
     path("auth/password", PasswordChangeView.as_view(), name="password-change"),
     path("auth/account", AccountDeleteView.as_view(), name="account-delete"),
     path("auth/email", EmailChangeView.as_view(), name="email-change"),
+    path("users/blocks", UserBlockView.as_view(), name="user-block"),
+    path(
+        "users/blocks/<int:target_user_id>",
+        UserBlockDetailView.as_view(),
+        name="user-block-detail",
+    ),
 ]

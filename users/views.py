@@ -1,4 +1,6 @@
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
+from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError, api_settings
@@ -9,7 +11,10 @@ from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import User, RefreshToken as RefreshTokenModel
+from common.pagination import CommonPageNumberPagination
+from common.responses import success_response
+
+from .models import User, RefreshToken as RefreshTokenModel, UserBlock
 from .serializers import (
     SignupSerializer,
     EmailCheckSerializer,
@@ -19,6 +24,8 @@ from .serializers import (
     PasswordChangeSerializer,
     AccountDeleteSerializer,
     EmailChangeSerializer,
+    UserBlockCreateSerializer,
+    UserBlockSerializer,
 )
 
 def issue_tokens(user):      # DB에 refresh token 저장
@@ -480,3 +487,69 @@ class AccountDeleteView(APIView):
 
 # 인증 테스트용 view 삭제
 # 인증이 필요한 실제 API가 생기면 해당 API에서 permission_classes = [IsAuthenticated] 테스트 할 것
+
+
+class UserBlockView(APIView):
+    """차단 등록(POST) / 차단 목록 조회(GET)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        blocks = (
+            UserBlock.objects
+            .filter(user=request.user)
+            .select_related("target")
+        )
+
+        paginator = CommonPageNumberPagination()
+        page = paginator.paginate_queryset(blocks, request)
+
+        serializer = UserBlockSerializer(page, many=True)
+
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = UserBlockCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        target_id = serializer.validated_data["target_id"]
+
+        if target_id == request.user.id:
+            raise ValidationError(
+                {"targetUserId": "자기 자신은 차단할 수 없습니다."}
+            )
+
+        target = get_object_or_404(User, id=target_id)
+
+        block, created = UserBlock.objects.get_or_create(
+            user=request.user,
+            target=target,
+        )
+
+        if not created:
+            raise ValidationError(
+                {"targetUserId": "이미 차단한 사용자입니다."}
+            )
+
+        return success_response(
+            data=UserBlockSerializer(block).data,
+            message="사용자를 차단했습니다.",
+            status_code=status.HTTP_201_CREATED,
+        )
+
+
+class UserBlockDetailView(APIView):
+    """차단 해제."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, target_user_id):
+        block = get_object_or_404(
+            UserBlock,
+            user=request.user,
+            target_id=target_user_id,
+        )
+
+        block.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
