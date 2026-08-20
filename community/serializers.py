@@ -98,6 +98,10 @@ class PostImageSerializer(serializers.ModelSerializer):
 
 class PostDetailSerializer(serializers.ModelSerializer):
     boardType = serializers.CharField(source="board_type")
+    authorId = serializers.IntegerField(
+        source="author_id",
+        read_only=True,
+    )
     authorName = serializers.SerializerMethodField()
     isAnonymous = serializers.BooleanField(source="is_anonymous")
     allowNotification = serializers.BooleanField(source="allow_notification")
@@ -119,6 +123,7 @@ class PostDetailSerializer(serializers.ModelSerializer):
             "boardType",
             "title",
             "content",
+            "authorId",
             "authorName",
             "isAnonymous",
             "allowNotification",
