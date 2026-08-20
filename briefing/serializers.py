@@ -29,6 +29,8 @@ class BriefingDetailSerializer(serializers.ModelSerializer):
             "content",
             "contentTables",
             "thumbnail",
+            "color",
+            "icon",
             "keySummary",
         ]
 
