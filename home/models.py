@@ -123,7 +123,15 @@ def validate_income_criteria(value):
     validate_choice_list(value, IncomeCriteria, "income_criteria")
 
 
+class PolicyQuerySet(models.QuerySet):
+    def visible(self):
+        """사용자 화면에 노출할 정책만."""
+        return self.filter(is_visible=True)
+
+
 class Policy(models.Model):
+    objects = PolicyQuerySet.as_manager()
+
     class Category(models.TextChoices):
         HOUSING = "HOUSING", "주거"
         EMPLOYMENT = "EMPLOYMENT", "취업"
@@ -180,6 +188,14 @@ class Policy(models.Model):
     application_end = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    is_visible = models.BooleanField(
+        default=True,
+        help_text=(
+            "사용자 화면 노출 여부. 끄면 목록/상세/추천/챗봇에서 조회되지 않는다. "
+            "데이터는 남으므로 다시 켜면 그대로 복구된다."
+        ),
+    )
 
     support_amount = models.CharField(
     max_length=200, blank=True, null=True,

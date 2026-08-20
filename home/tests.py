@@ -765,3 +765,97 @@ class PolicyScrapMatchTest(APITestCase):
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class PolicyVisibilityTest(APITestCase):
+    """is_visible 이 꺼진 정책은 사용자 화면 어디에도 나오지 않는다."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="visible@example.com",
+            username="visibleuser",
+            password="Test1234!",
+        )
+
+        self.shown = Policy.objects.create(
+            title="노출되는 테스트 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+        )
+
+        self.hidden = Policy.objects.create(
+            title="숨겨진 테스트 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.HOUSING,
+            target_condition="주거",
+            organization="기관",
+            is_visible=False,
+        )
+
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+    def test_hidden_policy_is_absent_from_list(self):
+        response = self.client.get("/policies", {"size": "50"})
+
+        ids = [policy["id"] for policy in response.data["content"]]
+
+        self.assertIn(self.shown.id, ids)
+        self.assertNotIn(self.hidden.id, ids)
+
+    def test_hidden_policy_detail_returns_404(self):
+        self.assertEqual(
+            self.client.get(f"/policies/{self.shown.id}").status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            self.client.get(f"/policies/{self.hidden.id}").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_hidden_policy_cannot_be_scrapped(self):
+        response = self.client.post(f"/policies/{self.hidden.id}/scrap")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(PolicyScrap.objects.exists())
+
+    def test_hidden_policy_is_absent_from_similar_policies(self):
+        response = self.client.get(f"/policies/{self.shown.id}/similar")
+
+        if response.status_code == status.HTTP_200_OK:
+            data = response.data.get("data", response.data)
+            similar = data.get("similarPolicies", data) if isinstance(data, dict) else data
+            ids = [item["id"] for item in similar]
+
+            self.assertNotIn(self.hidden.id, ids)
+
+    def test_hidden_policy_is_kept_in_database(self):
+        """노출만 끄는 것이라 데이터는 남는다."""
+        self.assertTrue(Policy.objects.filter(id=self.hidden.id).exists())
+
+        visible_ids = set(Policy.objects.visible().values_list("id", flat=True))
+
+        self.assertIn(self.shown.id, visible_ids)
+        self.assertNotIn(self.hidden.id, visible_ids)
+
+    def test_turning_visibility_back_on_restores_the_policy(self):
+        Policy.objects.filter(id=self.hidden.id).update(is_visible=True)
+
+        ids = [
+            policy["id"]
+            for policy in self.client.get("/policies", {"size": "50"}).data["content"]
+        ]
+
+        self.assertIn(self.hidden.id, ids)
