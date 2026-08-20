@@ -412,6 +412,24 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         fields = ["reason"]
 
 
+class ReportSerializer(serializers.ModelSerializer):
+    targetType = serializers.CharField(source="target_type", read_only=True)
+    postId = serializers.IntegerField(source="post_id", read_only=True)
+    commentId = serializers.IntegerField(source="comment_id", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = Report
+        fields = [
+            "id",
+            "targetType",
+            "postId",
+            "commentId",
+            "reason",
+            "createdAt",
+        ]
+
+
 class ScrapSerializer(serializers.ModelSerializer):
     postId = serializers.IntegerField(
         source="post.id",
