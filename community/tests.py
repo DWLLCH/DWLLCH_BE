@@ -1787,3 +1787,93 @@ class CommentAnonymousSequenceTest(APITestCase):
 
         with self.assertNumQueries(3):
             self.client.get(self.url)
+
+
+class PostListAuthorIdTest(APITestCase):
+    """목록 응답의 authorId. 차단한 작성자를 걸러내려면 필요하다."""
+
+    def setUp(self):
+        self.author = User.objects.create_user(
+            email="listauthor@example.com",
+            username="listauthor",
+            password="Test1234!",
+        )
+        self.viewer = User.objects.create_user(
+            email="listviewer@example.com",
+            username="listviewer",
+            password="Test1234!",
+        )
+
+        self.post = Post.objects.create(
+            author=self.author,
+            board_type=Post.BoardType.FREE,
+            title="일반 게시글",
+            content="본문",
+        )
+        self.anonymous_post = Post.objects.create(
+            author=self.author,
+            board_type=Post.BoardType.FREE,
+            title="익명 게시글",
+            content="본문",
+            is_anonymous=True,
+        )
+
+        self.client.force_authenticate(user=self.viewer)
+
+    def board_list(self):
+        return self.client.get(
+            f"/community/boards/{Post.BoardType.FREE}/posts"
+        ).data["content"]
+
+    def latest_list(self):
+        return self.client.get("/community/posts").data["content"]
+
+    def test_board_list_includes_author_id(self):
+        rows = {item["id"]: item for item in self.board_list()}
+
+        self.assertEqual(rows[self.post.id]["authorId"], self.author.id)
+
+    def test_latest_list_includes_author_id(self):
+        rows = {item["id"]: item for item in self.latest_list()}
+
+        self.assertEqual(rows[self.post.id]["authorId"], self.author.id)
+
+    def test_anonymous_post_still_exposes_author_id(self):
+        """익명 글은 authorName 이 모두 "익명" 이라 authorId 로만 구분된다."""
+        rows = {item["id"]: item for item in self.board_list()}
+        anonymous = rows[self.anonymous_post.id]
+
+        self.assertEqual(anonymous["authorName"], "익명")
+        self.assertEqual(anonymous["authorId"], self.author.id)
+
+    def test_blocked_author_posts_can_be_filtered_by_author_id(self):
+        """차단 목록의 targetUserId 와 대조해 걸러낼 수 있어야 한다."""
+        self.client.post(
+            "/users/blocks",
+            {"targetUserId": self.author.id},
+            format="json",
+        )
+
+        blocked_ids = {
+            item["targetUserId"]
+            for item in self.client.get("/users/blocks").data["content"]
+        }
+
+        visible = [
+            item
+            for item in self.board_list()
+            if item["authorId"] not in blocked_ids
+        ]
+
+        self.assertNotIn(
+            self.post.id, [item["id"] for item in visible]
+        )
+        self.assertNotIn(
+            self.anonymous_post.id, [item["id"] for item in visible]
+        )
+
+    def test_detail_and_list_report_the_same_author_id(self):
+        rows = {item["id"]: item for item in self.board_list()}
+        detail = self.client.get(f"/community/posts/{self.post.id}").data["data"]
+
+        self.assertEqual(rows[self.post.id]["authorId"], detail["authorId"])
