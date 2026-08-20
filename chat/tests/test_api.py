@@ -1,5 +1,7 @@
 import base64
+import io
 import tempfile
+import zipfile
 from datetime import date
 from unittest.mock import patch
 from urllib.parse import urlsplit
@@ -18,10 +20,12 @@ from chat.models import (
 )
 from chat.services import (
     STRUCTURE_FIELD_NAMES,
+    AttachmentUnreadableError,
     ExternalAppLink,
     GeminiRequestError,
     RiskAnalysisResult,
     StructuredReportResult,
+    analyze_risk,
     is_ready_for_structure,
     normalize_collected_structure_fields,
 )
@@ -667,3 +671,261 @@ class ReadyForStructureTests(APITestCase):
         self.assertEqual(collected, ["date", "amount", "risk_type"])
         self.assertFalse(is_ready_for_structure(collected))
         self.assertTrue(is_ready_for_structure(list(STRUCTURE_FIELD_NAMES)))
+
+
+def build_docx(paragraphs):
+    """Word 가 만드는 최소 구조의 DOCX 바이트를 만든다."""
+    namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    body = "".join(
+        f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>" for text in paragraphs
+    )
+    document = (
+        '<?xml version="1.0"?>'
+        f'<w:document xmlns:w="{namespace}"><w:body>{body}</w:body></w:document>'
+    )
+
+    buffer = io.BytesIO()
+
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", document)
+
+    return buffer.getvalue()
+
+
+PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+    "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+PDF_BYTES = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>"
+DOCX_UPLOAD_TYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class DocumentUploadTests(APITestCase):
+    """위기판독 문서(PDF/DOCX) 첨부."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="doc@example.com",
+            username="docuser",
+            password="password123!",
+            birth_date=date(2000, 1, 1),
+        )
+        self.client.force_authenticate(self.user)
+        self.session = RiskCheckSession.objects.create(user=self.user)
+
+    def analysis_result(self, **overrides):
+        values = {
+            "risk_level": "HIGH",
+            "summary": "요약",
+            "reply": "답변",
+        }
+        values.update(overrides)
+        return RiskAnalysisResult(**values)
+
+    def post_file(self, uploaded, message_type="DOCUMENT"):
+        return self.client.post(
+            f"/chat/risk-check/sessions/{self.session.id}/messages",
+            {
+                "type": message_type,
+                "content": "계약서 확인해 주세요.",
+                "file": uploaded,
+            },
+            format="multipart",
+        )
+
+    @patch("chat.views.analyze_risk")
+    def test_pdf_upload_is_accepted(self, analyze_risk):
+        analyze_risk.return_value = self.analysis_result()
+
+        response = self.post_file(
+            SimpleUploadedFile(
+                "계약서.pdf", PDF_BYTES, content_type="application/pdf"
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        message = RiskCheckMessage.objects.get(
+            id=response.data["data"]["messageId"]
+        )
+        self.assertEqual(message.type, RiskCheckMessage.MessageType.DOCUMENT)
+        self.assertTrue(message.file.name.endswith(".pdf"))
+
+    @patch("chat.views.analyze_risk")
+    def test_docx_upload_is_accepted(self, analyze_risk):
+        analyze_risk.return_value = self.analysis_result()
+
+        response = self.post_file(
+            SimpleUploadedFile(
+                "계약서.docx",
+                build_docx(["임대차계약서", "보증금 3,000만원"]),
+                content_type=DOCX_UPLOAD_TYPE,
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        message = RiskCheckMessage.objects.get(
+            id=response.data["data"]["messageId"]
+        )
+        self.assertTrue(message.file.name.endswith(".docx"))
+
+    @patch("chat.views.analyze_risk")
+    def test_docx_text_is_passed_to_the_model(self, analyze_risk):
+        """DOCX 는 모델이 못 읽으므로 본문이 프롬프트로 전달돼야 한다."""
+        analyze_risk.return_value = self.analysis_result()
+
+        self.post_file(
+            SimpleUploadedFile(
+                "계약서.docx",
+                build_docx(["보증금 반환 특약 없음"]),
+                content_type=DOCX_UPLOAD_TYPE,
+            )
+        )
+
+        uploaded = analyze_risk.call_args.kwargs["uploaded_file"]
+        self.assertTrue(uploaded.name.endswith(".docx"))
+
+    @patch("chat.views.analyze_risk")
+    def test_octet_stream_is_resolved_by_extension(self, analyze_risk):
+        """브라우저가 형식을 안 알려줘도 확장자로 판별한다."""
+        analyze_risk.return_value = self.analysis_result()
+
+        response = self.post_file(
+            SimpleUploadedFile(
+                "계약서.pdf",
+                PDF_BYTES,
+                content_type="application/octet-stream",
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_unsupported_document_type_is_rejected(self):
+        response = self.post_file(
+            SimpleUploadedFile(
+                "계약서.hwp", b"whatever", content_type="application/x-hwp"
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(RiskCheckMessage.objects.count(), 0)
+
+    def test_extension_spoofed_file_is_rejected(self):
+        """확장자만 pdf 로 바꾼 파일은 앞부분 검사에서 걸린다."""
+        response = self.post_file(
+            SimpleUploadedFile(
+                "악성.pdf",
+                b"MZ\x90\x00 this is not a pdf",
+                content_type="application/pdf",
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(RiskCheckMessage.objects.count(), 0)
+
+    def test_image_uploaded_as_document_is_rejected(self):
+        response = self.post_file(
+            SimpleUploadedFile("사진.png", PNG_BYTES, content_type="image/png")
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_document_uploaded_as_image_is_rejected(self):
+        response = self.post_file(
+            SimpleUploadedFile(
+                "계약서.pdf", PDF_BYTES, content_type="application/pdf"
+            ),
+            message_type="IMAGE",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fake_image_is_rejected(self):
+        """FileField 로 바꾼 뒤에도 실제 이미지인지 확인한다."""
+        response = self.post_file(
+            SimpleUploadedFile(
+                "가짜.png", b"not an image", content_type="image/png"
+            ),
+            message_type="IMAGE",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_document_without_file_is_rejected(self):
+        response = self.client.post(
+            f"/chat/risk-check/sessions/{self.session.id}/messages",
+            {"type": "DOCUMENT", "content": "파일 없이 보냅니다."},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_empty_docx_is_rejected_before_calling_the_model(self):
+        """본문을 못 뽑으면 Gemini 클라이언트를 만들기 전에 끊는다."""
+        empty_docx = SimpleUploadedFile(
+            "빈문서.docx", build_docx([]), content_type=DOCX_UPLOAD_TYPE
+        )
+
+        with patch("chat.services._get_client") as get_client:
+            with self.assertRaises(AttachmentUnreadableError):
+                analyze_risk(content="", uploaded_file=empty_docx)
+
+        get_client.assert_not_called()
+
+    @patch("chat.views.analyze_risk")
+    def test_unreadable_attachment_returns_422_and_is_not_saved(
+        self, analyze_risk
+    ):
+        analyze_risk.side_effect = AttachmentUnreadableError
+
+        response = self.post_file(
+            SimpleUploadedFile(
+                "빈문서.docx", build_docx([]), content_type=DOCX_UPLOAD_TYPE
+            )
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        self.assertEqual(response.data["code"], "CHAT_422_DOCUMENT_UNREADABLE")
+        self.assertEqual(RiskCheckMessage.objects.count(), 0)
+
+    @patch("chat.views.analyze_risk")
+    def test_unreadable_document_returns_document_specific_error(
+        self, analyze_risk
+    ):
+        analyze_risk.return_value = self.analysis_result(image_readable=False)
+
+        response = self.post_file(
+            SimpleUploadedFile(
+                "계약서.pdf", PDF_BYTES, content_type="application/pdf"
+            )
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        self.assertEqual(response.data["code"], "CHAT_422_DOCUMENT_UNREADABLE")
+        self.assertEqual(RiskCheckMessage.objects.count(), 0)
+
+    @patch("chat.views.analyze_risk")
+    def test_uploaded_document_is_served_with_its_own_type(self, analyze_risk):
+        analyze_risk.return_value = self.analysis_result()
+        self.post_file(
+            SimpleUploadedFile(
+                "계약서.pdf", PDF_BYTES, content_type="application/pdf"
+            )
+        )
+        message = RiskCheckMessage.objects.get(
+            sender=RiskCheckMessage.Sender.USER
+        )
+
+        response = self.client.get(
+            f"/chat/risk-check/messages/{message.id}/file"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")

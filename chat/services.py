@@ -216,14 +216,15 @@ def _build_attachment(uploaded_file):
 
 
 def analyze_risk(content, uploaded_file=None, previous_messages=None):
-    client = _get_client()
-    history = _format_history(previous_messages or [])
-
     attachment_part = None
     document_text = ""
 
+    # 첨부를 먼저 처리한다. 넘길 내용이 없으면 클라이언트를 만들기 전에 끊는다.
     if uploaded_file:
         attachment_part, document_text = _build_attachment(uploaded_file)
+
+    client = _get_client()
+    history = _format_history(previous_messages or [])
 
     if content:
         user_input = content
