@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'rest_framework',
     "rest_framework_simplejwt.token_blacklist",
     'corsheaders',
+    'storages',
 
     'users',
     'common',
@@ -224,8 +225,49 @@ GEMINI_BRIEFING_API_KEY = os.getenv("GEMINI_BRIEFING_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "30000"))
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+if IS_PRODUCTION:
+    AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.getenv(
+        "AWS_S3_REGION_NAME",
+        "ap-northeast-2",
+    )
+    AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN")
+
+    if not AWS_STORAGE_BUCKET_NAME:
+        raise RuntimeError(
+            "Missing required S3 setting: AWS_STORAGE_BUCKET_NAME"
+        )
+
+    if not AWS_S3_CUSTOM_DOMAIN:
+        raise RuntimeError(
+            "Missing required S3 setting: AWS_S3_CUSTOM_DOMAIN"
+        )
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "region_name": AWS_S3_REGION_NAME,
+                "location": "media",
+                "default_acl": None,
+                "querystring_auth": False,
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.StaticFilesStorage"
+            ),
+        },
+    }
+
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+
+else:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
+    
 
 LOGGING = {
     "version": 1,
