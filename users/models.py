@@ -95,6 +95,44 @@ class User(AbstractUser):
         return self.email
 
 
+class UserBlock(models.Model):
+    """한 사용자가 다른 사용자를 차단한 기록.
+
+    브라우저 저장으로는 기기를 옮기면 목록이 사라져 계정 기준으로 보관한다.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="blocks",
+        help_text="차단한 사용자",
+    )
+    target = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="blocked_by",
+        help_text="차단당한 사용자",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "target"],
+                name="unique_user_block",
+            ),
+            # 자기 자신 차단은 뷰에서도 막지만, 데이터로도 남지 않게 한다.
+            models.CheckConstraint(
+                condition=~models.Q(user=models.F("target")),
+                name="user_block_not_self",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} blocked {self.target}"
+
+
 class RefreshToken(models.Model):
     user = models.OneToOneField(
         User,

@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import User
+from .models import User, UserBlock
 
 
 class RegionSerializer(serializers.Serializer):
@@ -263,3 +263,26 @@ class AccountDeleteSerializer(serializers.Serializer):
     )
 
 
+class UserBlockCreateSerializer(serializers.Serializer):
+    targetUserId = serializers.IntegerField(source="target_id")
+
+
+class UserBlockSerializer(serializers.ModelSerializer):
+    targetUserId = serializers.IntegerField(source="target_id", read_only=True)
+    targetUsername = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = UserBlock
+        fields = [
+            "id",
+            "targetUserId",
+            "targetUsername",
+            "createdAt",
+        ]
+
+    def get_targetUsername(self, obj):
+        if obj.target is None or not obj.target.is_active:
+            return "탈퇴한 회원"
+
+        return obj.target.username
