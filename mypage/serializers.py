@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from home.serializers import PolicyMatchMixin
+
 from .models import Application, ChecklistItem, Notification
 
 User = get_user_model()
@@ -115,9 +117,16 @@ class ProfileSerializer(serializers.ModelSerializer):
         return value
 
 
-class ApplicationSerializer(serializers.ModelSerializer):
+class ApplicationSerializer(PolicyMatchMixin, serializers.ModelSerializer):
     policyId = serializers.IntegerField(source="policy_id", read_only=True)
     policyTitle = serializers.CharField(source="policy.title", read_only=True)
+    applicationEnd = serializers.DateField(
+        source="policy.application_end",
+        read_only=True,
+        allow_null=True,
+    )
+    matchLevel = serializers.SerializerMethodField()
+    matchReason = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
 
@@ -128,6 +137,9 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "policy",
             "policyId",
             "policyTitle",
+            "applicationEnd",
+            "matchLevel",
+            "matchReason",
             "status",
             "memo",
             "createdAt",
@@ -135,6 +147,9 @@ class ApplicationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "createdAt", "updatedAt"]
         extra_kwargs = {"policy": {"write_only": True}}
+
+    def match_policy_id(self, obj):
+        return obj.policy_id
 
 
 class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):

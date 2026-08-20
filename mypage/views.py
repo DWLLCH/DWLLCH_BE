@@ -10,6 +10,9 @@ from rest_framework import status
 
 from common.responses import success_response
 from common.pagination import CommonPageNumberPagination
+# 정책 목록/스크랩과 같은 매칭 결과를 쓰기 위해 재사용한다.
+# 정책 단위 캐시가 있어 이미 평가한 정책은 다시 호출하지 않는다.
+from home.views import _assess_matches_safely
 
 from .models import Application, ChecklistItem, Notification
 from .serializers import (
@@ -101,10 +104,30 @@ def mypage_profile(request):
 @permission_classes([IsAuthenticated])
 def application_list(request):
     if request.method == "GET":
-        applications = Application.objects.filter(user=request.user).order_by("-created_at")
+        applications = (
+            Application.objects
+            .filter(user=request.user)
+            .select_related("policy")
+            .order_by("-created_at")
+        )
         paginator = CommonPageNumberPagination()
         page = paginator.paginate_queryset(applications, request)
-        serializer = ApplicationSerializer(page, many=True)
+
+        match_map = {}
+
+        if request.user.profile_completed and page:
+            match_map = _assess_matches_safely(
+                [application.policy for application in page],
+                request.user,
+            )
+
+        serializer = ApplicationSerializer(
+            page,
+            many=True,
+            context={
+                "match_map": match_map,
+            },
+        )
         return paginator.get_paginated_response(serializer.data)
 
     serializer = ApplicationSerializer(data=request.data)
