@@ -159,7 +159,11 @@ class PolicyListMatchTest(APITestCase):
 
         Policy.objects.filter(id=newer_policy.id).update(updated_at=now)
 
-        response = self.client.get("/policies?sort=updatedAt")
+        # 시드 데이터에 밀려 첫 페이지에서 빠지지 않도록 이 테스트가 만든 정책만 조회한다.
+        response = self.client.get(
+            "/policies",
+            {"sort": "updatedAt", "keyword": "수정 정책"},
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -204,7 +208,11 @@ class PolicyListMatchTest(APITestCase):
             application_end=date.today() + timedelta(days=3),
         )
 
-        response = self.client.get("/policies?sort=applicationEnd")
+        # 시드 데이터에 밀려 첫 페이지에서 빠지지 않도록 이 테스트가 만든 정책만 조회한다.
+        response = self.client.get(
+            "/policies",
+            {"sort": "applicationEnd", "keyword": "마감"},
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -253,7 +261,8 @@ class PolicyListMatchTest(APITestCase):
 
         Policy.objects.filter(id=newer_policy.id).update(updated_at=now)
 
-        response = self.client.get("/policies")
+        # 정렬 파라미터 없이(기본값) 조회하되, 시드 데이터에 밀리지 않도록 범위를 좁힌다.
+        response = self.client.get("/policies", {"keyword": "기본 정렬"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -336,6 +345,23 @@ class PolicyGroupFilterTest(APITestCase):
             organization="기관",
         )
 
+        # 보호유형과 소득기준 양쪽에 조건이 있어, 선택값과 어긋나면 확실히 제외되는 정책.
+        # 조건이 비어 있는 정책은 "제한 없음"으로 보고 항상 매칭되므로,
+        # 제외 동작을 검증하려면 이렇게 양쪽이 채워진 정책이 필요하다.
+        self.foster_near_poor = Policy.objects.create(
+            title="가정위탁 차상위 정책",
+            summary="요약",
+            content="내용",
+            eligibility="자격",
+            application_method="신청 방법",
+            required_documents="서류",
+            category=Policy.Category.ETC,
+            target_condition="기타",
+            organization="기관",
+            protection_types=[Policy.ProtectionType.FOSTER_CARE],
+            income_criteria=[Policy.IncomeCriteria.NEAR_POOR],
+        )
+
     def test_no_filter_returns_all_policies(self):
         response = self.client.get(self.url)
 
@@ -355,8 +381,13 @@ class PolicyGroupFilterTest(APITestCase):
 
         self.assertIn(self.residential_under_18.id, ids)
         self.assertIn(self.residential_and_group_home.id, ids)
-        self.assertNotIn(self.income_only.id, ids)
-        self.assertNotIn(self.unrelated_policy.id, ids)
+
+        # 보호유형을 지정하지 않은 정책은 대상 제한이 없다는 뜻이라 함께 노출된다.
+        self.assertIn(self.income_only.id, ids)
+        self.assertIn(self.unrelated_policy.id, ids)
+
+        # 다른 보호유형만 대상으로 하는 정책은 제외된다.
+        self.assertNotIn(self.foster_near_poor.id, ids)
 
     def test_same_group_multi_select_is_and(self):
         response = self.client.get(
@@ -384,10 +415,16 @@ class PolicyGroupFilterTest(APITestCase):
 
         ids = [policy["id"] for policy in response.data["content"]]
 
+        # 보호유형 그룹을 충족하거나, 소득 그룹을 충족하면 노출된다.
         self.assertIn(self.residential_and_group_home.id, ids)
         self.assertIn(self.income_only.id, ids)
-        self.assertNotIn(self.residential_under_18.id, ids)
-        self.assertNotIn(self.unrelated_policy.id, ids)
+
+        # 보호유형은 어긋나지만 소득 조건이 없어 소득 그룹에서는 제한이 없다.
+        self.assertIn(self.residential_under_18.id, ids)
+        self.assertIn(self.unrelated_policy.id, ids)
+
+        # 두 그룹 모두 어긋나는 정책만 빠진다.
+        self.assertNotIn(self.foster_near_poor.id, ids)
 
     def test_filter_combines_with_category(self):
         response = self.client.get(
@@ -399,7 +436,14 @@ class PolicyGroupFilterTest(APITestCase):
 
         ids = [policy["id"] for policy in response.data["content"]]
 
-        self.assertEqual(ids, [])
+        # FINANCE 이면서 보호유형 제한이 없으므로 남는다.
+        self.assertIn(self.income_only.id, ids)
+
+        # 카테고리가 달라 보호유형과 무관하게 빠진다.
+        self.assertNotIn(self.residential_under_18.id, ids)
+        self.assertNotIn(self.residential_and_group_home.id, ids)
+        self.assertNotIn(self.unrelated_policy.id, ids)
+        self.assertNotIn(self.foster_near_poor.id, ids)
 
     def test_invalid_protection_type_fails(self):
         response = self.client.get(self.url, {"protectionType": "INVALID"})
