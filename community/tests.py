@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import (
     Post,
     Comment,
+    PostAnonymousAlias,
     PostLike,
     CommentLike,
     PostImage,
@@ -1635,3 +1636,154 @@ class MyCommentListTest(APITestCase):
             response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+
+
+class CommentAnonymousSequenceTest(APITestCase):
+    """게시글 안에서 작성자별로 발급되는 익명 번호."""
+
+    def setUp(self):
+        self.owner = self.create_user("anon-owner@example.com", "anonowner")
+        self.first = self.create_user("anon-first@example.com", "anonfirst")
+        self.second = self.create_user("anon-second@example.com", "anonsecond")
+
+        self.post = Post.objects.create(
+            author=self.owner,
+            board_type=Post.BoardType.FREE,
+            title="익명 번호 테스트 게시글",
+            content="본문",
+        )
+
+        self.url = f"/community/posts/{self.post.id}/comments"
+
+    def create_user(self, email, username):
+        return User.objects.create_user(
+            email=email,
+            username=username,
+            password="Test1234!",
+        )
+
+    def write(self, user, content, is_anonymous=True, parent_id=None):
+        self.client.force_authenticate(user=user)
+
+        payload = {"content": content, "isAnonymous": is_anonymous}
+
+        if parent_id is not None:
+            payload["parentId"] = parent_id
+
+        response = self.client.post(self.url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        return response.data["data"]
+
+    def listing(self):
+        self.client.force_authenticate(user=self.owner)
+
+        return self.client.get(self.url).data["data"]["comments"]
+
+    def delete(self, comment_id, user):
+        self.client.force_authenticate(user=user)
+
+        return self.client.delete(
+            f"/community/comments/{comment_id}"
+        ).status_code
+
+    def test_sequence_starts_at_one_per_post(self):
+        first = self.write(self.first, "첫 익명")
+        second = self.write(self.second, "두 번째 익명")
+
+        self.assertEqual(first["anonymousSequence"], 1)
+        self.assertEqual(second["anonymousSequence"], 2)
+
+    def test_same_author_keeps_the_same_number(self):
+        first = self.write(self.first, "첫 댓글")
+        again = self.write(self.first, "두 번째 댓글")
+
+        self.assertEqual(first["anonymousSequence"], again["anonymousSequence"])
+
+    def test_named_comment_has_no_sequence(self):
+        comment = self.write(self.owner, "실명 댓글", is_anonymous=False)
+
+        self.assertIsNone(comment["anonymousSequence"])
+
+    def test_number_survives_hard_delete_of_every_comment(self):
+        """댓글을 모두 지워도 번호는 남아, 다시 쓰면 같은 번호를 받는다."""
+        first = self.write(self.first, "지울 댓글")
+
+        self.assertEqual(
+            self.delete(first["id"], self.first),
+            status.HTTP_204_NO_CONTENT,
+        )
+        self.assertFalse(
+            Comment.objects.filter(post=self.post, author=self.first).exists()
+        )
+
+        again = self.write(self.first, "다시 쓴 댓글")
+
+        self.assertEqual(again["anonymousSequence"], 1)
+
+    def test_number_is_not_reused_by_another_author(self):
+        """지운 사람의 번호를 다음 사람이 물려받지 않는다."""
+        first = self.write(self.first, "지울 댓글")
+        self.delete(first["id"], self.first)
+
+        second = self.write(self.second, "다른 사람 댓글")
+
+        self.assertEqual(second["anonymousSequence"], 2)
+
+    def test_numbers_are_scoped_to_each_post(self):
+        other_post = Post.objects.create(
+            author=self.owner,
+            board_type=Post.BoardType.FREE,
+            title="다른 게시글",
+            content="본문",
+        )
+
+        self.write(self.first, "첫 글의 익명")
+
+        self.client.force_authenticate(user=self.second)
+        response = self.client.post(
+            f"/community/posts/{other_post.id}/comments",
+            {"content": "다른 글의 첫 익명", "isAnonymous": True},
+            format="json",
+        )
+
+        self.assertEqual(response.data["data"]["anonymousSequence"], 1)
+
+    def test_soft_deleted_comment_keeps_its_number(self):
+        parent = self.write(self.first, "답글 달릴 댓글")
+        self.write(self.second, "답글", parent_id=parent["id"])
+        self.delete(parent["id"], self.first)
+
+        listed = next(
+            item for item in self.listing() if item["id"] == parent["id"]
+        )
+
+        self.assertEqual(listed["content"], "삭제된 댓글입니다.")
+        self.assertEqual(listed["anonymousSequence"], 1)
+
+    def test_alias_is_not_issued_for_named_comments(self):
+        self.write(self.first, "실명 댓글", is_anonymous=False)
+
+        self.assertFalse(
+            PostAnonymousAlias.objects.filter(
+                post=self.post, author=self.first
+            ).exists()
+        )
+
+    def test_comment_list_does_not_query_per_comment(self):
+        """댓글 수가 늘어도 번호 조회 때문에 쿼리가 늘지 않는다."""
+        for index in range(3):
+            self.write(self.first, f"댓글 {index}")
+
+        self.client.force_authenticate(user=self.owner)
+
+        with self.assertNumQueries(3):
+            self.client.get(self.url)
+
+        self.write(self.second, "댓글 추가")
+
+        self.client.force_authenticate(user=self.owner)
+
+        with self.assertNumQueries(3):
+            self.client.get(self.url)

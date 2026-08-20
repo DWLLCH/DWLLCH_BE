@@ -1,6 +1,16 @@
 from rest_framework import serializers
 
-from .models import Post, Comment, Report, Scrap, PostImage, Poll, PollOption, PollVote
+from .models import (
+    Post,
+    Comment,
+    PostAnonymousAlias,
+    Report,
+    Scrap,
+    PostImage,
+    Poll,
+    PollOption,
+    PollVote,
+)
 
 
 class PollOptionCreateSerializer(serializers.Serializer):
@@ -252,6 +262,7 @@ class CommentSerializer(serializers.ModelSerializer):
         source="parent_id",
         read_only=True,
     )
+    anonymousSequence = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
 
@@ -263,6 +274,7 @@ class CommentSerializer(serializers.ModelSerializer):
             "parentId",
             "authorId",
             "authorName",
+            "anonymousSequence",
             "content",
             "isAnonymous",
             "isDeleted",
@@ -285,6 +297,24 @@ class CommentSerializer(serializers.ModelSerializer):
             return "탈퇴한 회원"
 
         return "익명" if obj.is_anonymous else obj.author.username
+
+    def get_anonymousSequence(self, obj):
+        """게시글 안에서 이 작성자에게 발급된 익명 번호. 실명 댓글이면 None."""
+        if not obj.is_anonymous:
+            return None
+
+        # 목록 조회는 게시글 단위로 미리 모아둔 값을 쓴다(댓글마다 조회하지 않도록).
+        sequences = self.context.get("anonymous_sequences")
+
+        if sequences is not None:
+            return sequences.get(obj.author_id)
+
+        alias = PostAnonymousAlias.objects.filter(
+            post_id=obj.post_id,
+            author_id=obj.author_id,
+        ).first()
+
+        return alias.sequence if alias else None
 
     def get_likeCount(self, obj):
         if hasattr(obj, "annotated_like_count"):
