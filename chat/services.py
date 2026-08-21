@@ -1,0 +1,295 @@
+import json
+from typing import Literal
+
+import httpx
+from django.conf import settings
+
+from chat.uploads import (
+    DOCX_CONTENT_TYPE,
+    IMAGE_CONTENT_TYPES,
+    PDF_CONTENT_TYPE,
+    extract_docx_text,
+    resolve_content_type,
+)
+from google import genai
+from google.genai import errors as genai_errors, types
+from pydantic import BaseModel, Field, ValidationError
+
+
+class ExternalAppLink(BaseModel):
+    name: str
+    url: str
+
+
+# SOS 구조화 카드를 채우는 6개 항목. StructuredReportResult 의 필드명과 같다.
+STRUCTURE_FIELD_NAMES = (
+    "date",
+    "amount",
+    "location",
+    "counterpart",
+    "situation_summary",
+    "risk_type",
+)
+
+
+class RiskAnalysisResult(BaseModel):
+    risk_level: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    summary: str
+    flagged_clauses: list[str] = Field(default_factory=list)
+    missing_verifications: list[str] = Field(default_factory=list)
+    action_guide: list[str] = Field(default_factory=list)
+    external_app_link: ExternalAppLink | None = None
+    reply: str
+    suggested_replies: list[str] = Field(default_factory=list)
+    image_readable: bool = True
+    # 스키마를 Literal 로 좁히면 모델이 예상 밖 값을 돌려줄 때 파싱이 통째로 실패한다.
+    # 느슨하게 받고 normalize_collected_structure_fields 로 걸러낸다.
+    collected_structure_fields: list[str] = Field(default_factory=list)
+
+
+class StructuredReportResult(BaseModel):
+    date: str = ""
+    amount: str = ""
+    location: str = ""
+    counterpart: str = ""
+    situation_summary: str = ""
+    risk_type: str = ""
+    risk_grade: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    missing_fields: list[str] = Field(default_factory=list)
+
+
+class GeminiRequestError(Exception):
+    """Gemini API 또는 네트워크 호출 실패."""
+
+
+class AttachmentUnreadableError(Exception):
+    """첨부 파일에서 분석할 내용을 얻지 못함."""
+
+
+RISK_ANALYSIS_PROMPT = """
+당신은 청년의 주거·금융·계약·범죄피해 위험 신호를 판독하는 한국어 지원 챗봇입니다.
+
+다음 정책을 반드시 지키세요.
+
+1. 법률가처럼 사기 여부나 범죄 여부를 확정하지 마세요.
+2. "사기입니다", "불법입니다"처럼 단정하지 말고
+   "의심 신호가 있습니다", "확인이 필요합니다", "전문가 상담을 권장합니다"
+   같은 표현을 사용하세요.
+3. 사용자의 불안을 과도하게 키우지 말고, 짧고 구체적인 행동 지침을 주세요.
+4. 첨부된 이미지나 문서가 흐리거나 핵심 내용을 읽을 수 없다면
+   image_readable=false로 반환하세요.
+5. 첨부가 읽히지 않으면 추측해서 분석하지 마세요.
+6. 위험도 기준:
+   - LOW: 일반적인 정보 질문 또는 뚜렷한 위험 신호 없음
+   - MEDIUM: 추가 확인이 필요한 불확실한 신호
+   - HIGH: 금전 손실, 계약 피해, 사기 의심 등 즉시 확인이나 중단을 권고할 상황
+   - CRITICAL: 자해·타해 위험, 현재 진행 중인 심각한 폭력 또는 즉각적인 신체 위험
+7. CRITICAL은 단순 계약 분쟁이나 금전 손실에 사용하지 마세요.
+8. reply는 모바일 채팅 화면에 표시할 자연스러운 한국어 답변으로 작성하세요.
+9. suggested_replies에는 사용자가 다음에 선택할 수 있는 짧은 답변을 최대 3개 작성하세요.
+10. 사용자가 제공하지 않은 날짜, 금액, 장소, 상대방 정보를 만들어내지 마세요.
+11. flagged_clauses에는 계약서나 대화에서 발견된 의심 문구만 넣으세요.
+12. external_app_link는 실제로 도움이 되는 경우에만 반환하세요.
+13. collected_structure_fields에는 지금까지의 대화에서 사실로 확인된
+    SOS 구조화 항목의 영문 이름만 넣으세요.
+    항목은 date(날짜), amount(금액), location(장소), counterpart(상대방),
+    situation_summary(상황 요약), risk_type(위험 유형)입니다.
+14. 사용자가 말하지 않았거나 추측해야 하는 항목은
+    collected_structure_fields에 넣지 마세요.
+"""
+
+
+STRUCTURE_PROMPT = """
+아래 대화 내역을 SOS 전달용 6개 항목으로 구조화하세요.
+
+항목:
+- date: 사건 또는 계약 날짜
+- amount: 피해 또는 계약 금액
+- location: 사건 또는 주거지 위치
+- counterpart: 상대방 또는 기관
+- situation_summary: 객관적인 상황 요약
+- risk_type: 위험 유형
+
+규칙:
+1. 대화에 없는 사실을 추측하지 마세요.
+2. 확인되지 않은 항목은 빈 문자열로 반환하세요.
+3. 빈 항목의 영문 필드명을 missing_fields에 넣으세요.
+4. 법적 결론이나 범죄 확정 표현을 사용하지 마세요.
+5. risk_grade는 LOW, MEDIUM, HIGH, CRITICAL 중 하나입니다.
+6. CRITICAL은 즉각적인 신체 위험, 자해·타해 또는 현재 진행 중인 심각한
+   범죄피해 위험에만 사용하세요.
+"""
+
+
+def normalize_collected_structure_fields(values):
+    """모델이 돌려준 항목명을 알려진 6개 항목으로만 추린다.
+
+    대소문자나 공백이 섞여 오거나 없는 항목명이 올 수 있어 그대로 믿지 않는다.
+    중복은 제거하고 STRUCTURE_FIELD_NAMES 순서를 따른다.
+    """
+    if not isinstance(values, list):
+        return []
+
+    collected = set()
+
+    for value in values:
+        if isinstance(value, str):
+            collected.add(value.strip().lower())
+
+    return [name for name in STRUCTURE_FIELD_NAMES if name in collected]
+
+
+def is_ready_for_structure(collected_fields):
+    """6개 항목이 모두 확인됐는지 여부. 구조화 카드 자동 표시 기준이다."""
+    return set(collected_fields) == set(STRUCTURE_FIELD_NAMES)
+
+
+def _get_client():
+    if not settings.GEMINI_CHAT_API_KEY:
+        raise RuntimeError("GEMINI_CHAT_API_KEY 설정되지 않았습니다.")
+
+    return genai.Client(
+        api_key=settings.GEMINI_CHAT_API_KEY,
+        http_options=types.HttpOptions(timeout=settings.GEMINI_TIMEOUT_MS),
+    )
+
+
+def _parse_response(response, schema):
+    if getattr(response, "parsed", None):
+        parsed = response.parsed
+        if isinstance(parsed, schema):
+            return parsed
+        return schema.model_validate(parsed)
+
+    return schema.model_validate(json.loads(response.text))
+
+
+def _format_history(messages):
+    formatted = []
+
+    for message in messages:
+        sender = "사용자" if message.sender == "USER" else "AI 챗봇"
+        content = message.content or "(이미지 첨부)"
+
+        formatted.append(f"{sender}: {content}")
+
+    return "\n".join(formatted)
+
+
+def _format_document_text(document_text):
+    """DOCX 에서 뽑은 본문을 프롬프트에 끼워 넣을 형태로 만든다."""
+    if not document_text:
+        return ""
+
+    return f"""
+첨부 문서에서 추출한 본문:
+{document_text}
+"""
+
+
+def _build_attachment(uploaded_file):
+    """첨부 파일을 (Gemini Part, 추출한 문서 본문) 으로 바꾼다.
+
+    이미지와 PDF 는 바이트 그대로 넘기면 모델이 읽는다.
+    DOCX 는 모델이 읽지 못해 본문 텍스트를 뽑아 프롬프트에 붙인다.
+    """
+    content_type = resolve_content_type(uploaded_file)
+
+    uploaded_file.seek(0)
+    data = uploaded_file.read()
+    uploaded_file.seek(0)
+
+    if content_type in IMAGE_CONTENT_TYPES or content_type == PDF_CONTENT_TYPE:
+        part = types.Part.from_bytes(data=data, mime_type=content_type)
+        return part, ""
+
+    if content_type == DOCX_CONTENT_TYPE:
+        text = extract_docx_text(data)
+
+        # 본문을 못 뽑으면 모델에 넘길 내용이 없다. 호출하기 전에 끊는다.
+        if not text.strip():
+            raise AttachmentUnreadableError
+
+        return None, text
+
+    raise ValueError("지원되지 않는 첨부 파일 형식입니다.")
+
+
+def analyze_risk(content, uploaded_file=None, previous_messages=None):
+    attachment_part = None
+    document_text = ""
+
+    # 첨부를 먼저 처리한다. 넘길 내용이 없으면 클라이언트를 만들기 전에 끊는다.
+    if uploaded_file:
+        attachment_part, document_text = _build_attachment(uploaded_file)
+
+    client = _get_client()
+    history = _format_history(previous_messages or [])
+
+    if content:
+        user_input = content
+    elif attachment_part is not None or document_text:
+        user_input = "텍스트 설명 없이 첨부 파일만 보냄"
+    else:
+        user_input = "입력 없음"
+
+    prompt = f"""
+{RISK_ANALYSIS_PROMPT}
+
+이전 대화:
+{history or "이전 대화 없음"}
+
+현재 사용자 입력:
+{user_input}
+{_format_document_text(document_text)}
+현재 사용자 입력과 이전 대화의 맥락을 함께 분석하세요.
+"""
+
+    contents = [prompt]
+
+    if attachment_part is not None:
+        contents.append(attachment_part)
+
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=RiskAnalysisResult,
+            ),
+        )
+    except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
+        raise GeminiRequestError from exc
+
+    try:
+        return _parse_response(response, RiskAnalysisResult)
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc
+
+
+def structure_session(messages):
+    client = _get_client()
+    history = _format_history(messages)
+
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=f"""
+{STRUCTURE_PROMPT}
+
+대화 내역:
+{history}
+""",
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=StructuredReportResult,
+            ),
+        )
+    except (genai_errors.APIError, httpx.HTTPError, TimeoutError) as exc:
+        raise GeminiRequestError from exc
+
+    try:
+        return _parse_response(response, StructuredReportResult)
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise GeminiRequestError from exc

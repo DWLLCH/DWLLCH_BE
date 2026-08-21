@@ -13,10 +13,13 @@ import os
 
 from pathlib import Path
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
+from datetime import timedelta
 
-load_dotenv()
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -28,11 +31,25 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
 ]
+
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "x-organization-id",
+)
 
 # Application definition
 
@@ -43,9 +60,41 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'rest_framework',
+    "rest_framework_simplejwt.token_blacklist",
     'corsheaders',
+    'storages',
+
+    'users',
+    'common',
+    'home',
+    'mypage',
+    'community',
+    'chat',
+    'b2g',
+    'briefing',
+    
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+    "rest_framework.permissions.IsAuthenticated",
+    ),
+    "EXCEPTION_HANDLER": "common.exceptions.custom_exception_handler",
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -81,13 +130,50 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+IS_PRODUCTION = os.getenv("ENVIRONMENT") == "production"
 
+if IS_PRODUCTION:
+    required_rds_settings = {
+        "RDS_DB_NAME": os.getenv("RDS_DB_NAME"),
+        "RDS_USERNAME": os.getenv("RDS_USERNAME"),
+        "RDS_PASSWORD": os.getenv("RDS_PASSWORD"),
+        "RDS_HOSTNAME": os.getenv("RDS_HOSTNAME"),
+    }
+
+    missing_settings = [
+        name
+        for name, value in required_rds_settings.items()
+        if not value
+    ]
+
+    if missing_settings:
+        raise RuntimeError(
+            "Missing required RDS settings: "
+            + ", ".join(missing_settings)
+        )
+
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": required_rds_settings["RDS_DB_NAME"],
+            "USER": required_rds_settings["RDS_USERNAME"],
+            "PASSWORD": required_rds_settings["RDS_PASSWORD"],
+            "HOST": required_rds_settings["RDS_HOSTNAME"],
+            "PORT": os.getenv("RDS_PORT", "5432"),
+            "OPTIONS": {
+                "sslmode": "require",
+                "connect_timeout": 5,
+            },
+        }
+    }
+
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -129,3 +215,79 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+AUTH_USER_MODEL = 'users.User'
+
+GEMINI_CHAT_API_KEY = os.getenv("GEMINI_CHAT_API_KEY", "")
+GEMINI_HOME_API_KEY = os.getenv("GEMINI_HOME_API_KEY", "") 
+GEMINI_BRIEFING_API_KEY = os.getenv("GEMINI_BRIEFING_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "30000"))
+
+if IS_PRODUCTION:
+    AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.getenv(
+        "AWS_S3_REGION_NAME",
+        "ap-northeast-2",
+    )
+    AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN")
+
+    if not AWS_STORAGE_BUCKET_NAME:
+        raise RuntimeError(
+            "Missing required S3 setting: AWS_STORAGE_BUCKET_NAME"
+        )
+
+    if not AWS_S3_CUSTOM_DOMAIN:
+        raise RuntimeError(
+            "Missing required S3 setting: AWS_S3_CUSTOM_DOMAIN"
+        )
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "region_name": AWS_S3_REGION_NAME,
+                "location": "media",
+                "custom_domain": AWS_S3_CUSTOM_DOMAIN,
+                "default_acl": None,
+                "querystring_auth": False,
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.StaticFilesStorage"
+            ),
+        },
+    }
+
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+
+else:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
+    
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
